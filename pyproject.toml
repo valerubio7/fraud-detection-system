@@ -37,6 +37,7 @@ notebooks = [
   "seaborn>=0.13.0,<1.0.0",
 ]
 model = [
+  "boruta>=0.3.0",
   "imbalanced-learn>=0.12.0,<1.0.0",
   "xgboost>=2.0.0,<3.0.0",
 ]

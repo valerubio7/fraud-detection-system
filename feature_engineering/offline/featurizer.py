@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
 from feature_engineering.offline.encoders import CategoricalEncoderPipeline
+
+if TYPE_CHECKING:
+    from feature_engineering.offline.selection import FeatureSelectionReport
 
 _ONE_HOUR_NS = np.int64(3_600 * 1_000_000_000)
 _TWENTY_FOUR_HOURS_NS = np.int64(86_400 * 1_000_000_000)
@@ -222,6 +226,7 @@ class TransactionFeaturizer:
         self._encoders_dir = Path(encoders_dir) if encoders_dir is not None else None
         self._cat_pipeline: CategoricalEncoderPipeline | None = None
         self._is_fitted = False
+        self.selected_features_: list[str] | None = None
 
         if self._encoders_dir is not None:
             encoder_path = self._encoders_dir / ENCODER_FILENAME
@@ -370,6 +375,8 @@ class TransactionFeaturizer:
         )
         out = out_sorted.iloc[inv_sort_idx].copy()
         out.index = df.index
+        if self.selected_features_ is not None:
+            out = out[self.selected_features_]
         return out
 
     def fit_transform(self, df: pd.DataFrame, y: pd.Series) -> pd.DataFrame:
@@ -388,9 +395,23 @@ class TransactionFeaturizer:
         """Return the ordered list of output feature column names.
 
         Returns:
-            List of 18 feature names matching the column order of ``transform()`` output.
+            Selected feature names if ``apply_selection`` has been called, otherwise
+            the full list of 18 features.
         """
+        if self.selected_features_ is not None:
+            return list(self.selected_features_)
         return list(ALL_FEATURES)
+
+    def apply_selection(self, report: FeatureSelectionReport) -> None:
+        """Persist selected features from a FeatureSelectionReport.
+
+        After calling this, ``transform()`` will return only the selected columns
+        and ``get_feature_names()`` will reflect the reduced feature list.
+
+        Args:
+            report: FeatureSelectionReport returned by ``select_features()``.
+        """
+        self.selected_features_ = list(report.selected_features)
 
     def _validate_columns(self, df: pd.DataFrame) -> None:
         missing = _REQUIRED_COLUMNS - set(df.columns)
