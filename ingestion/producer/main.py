@@ -316,12 +316,13 @@ def generate_fraud_transactions(
     raise ValueError(f"Unsupported fraud pattern: {pattern}")
 
 
-def run_live_mode(
+def run_generative_mode(
     loop: ProducerLoop,
     legit_generator: LegitimateTransactionGenerator,
     fraud_generator: FraudPatternGenerator,
     rng: random.Random,
     fraud_rate: float,
+    scenario: str | None = None,
 ) -> ProducerStats:
     history: dict[str, list[Transaction]] = defaultdict(list)
     countries: dict[str, set[str]] = defaultdict(set)
@@ -331,48 +332,7 @@ def run_live_mode(
     while not loop.should_stop():
         is_fraud = rng.random() < fraud_rate
         if is_fraud:
-            pattern = next(pattern_cycle)
-            user_profile = choose_user_profile(rng, legit_generator)
-            transactions = generate_fraud_transactions(
-                fraud_generator,
-                pattern,
-                user_profile,
-                history,
-                countries,
-                merchants,
-                rng,
-            )
-            for transaction in transactions:
-                update_user_context(transaction, history, countries, merchants)
-                if not loop.send(transaction, is_fraud=True):
-                    return loop._stats
-        else:
-            transaction = legit_generator.generate_transaction()
-            fraud_generator.update_context([transaction])
-            update_user_context(transaction, history, countries, merchants)
-            if not loop.send(transaction, is_fraud=False):
-                return loop._stats
-
-    return loop._stats
-
-
-def run_scenario_mode(
-    loop: ProducerLoop,
-    legit_generator: LegitimateTransactionGenerator,
-    fraud_generator: FraudPatternGenerator,
-    rng: random.Random,
-    scenario: str,
-) -> ProducerStats:
-    history: dict[str, list[Transaction]] = defaultdict(list)
-    countries: dict[str, set[str]] = defaultdict(set)
-    merchants: dict[str, set[str]] = defaultdict(set)
-
-    pattern_cycle = itertools.cycle(FRAUD_PATTERNS)
-
-    while not loop.should_stop():
-        is_fraud = rng.random() < SCENARIO_FRAUD_RATE
-        if is_fraud:
-            pattern = next(pattern_cycle) if scenario == "mixed" else scenario
+            pattern = next(pattern_cycle) if scenario is None or scenario == "mixed" else scenario
             user_profile = choose_user_profile(rng, legit_generator)
             transactions = generate_fraud_transactions(
                 fraud_generator,
@@ -425,7 +385,6 @@ def main() -> None:
 
     producer = TransactionProducer(
         broker_url=os.getenv("KAFKA_BROKER_URL", "kafka:29092"),
-        schema_registry_url=os.getenv("KAFKA_SCHEMA_REGISTRY_URL", "http://schema-registry:8081"),
         topic=os.getenv("KAFKA_TOPICS_RAW", "transactions.raw"),
         schema_path=str(DEFAULT_SCHEMA_PATH),
     )
@@ -451,15 +410,16 @@ def main() -> None:
         if args.mode == "replay":
             run_replay_mode(loop, Path(args.replay))
         elif args.mode == "scenario":
-            run_scenario_mode(
+            run_generative_mode(
                 loop=loop,
                 legit_generator=legit_generator,
                 fraud_generator=fraud_generator,
                 rng=rng,
+                fraud_rate=SCENARIO_FRAUD_RATE,
                 scenario=args.scenario,
             )
         else:
-            run_live_mode(
+            run_generative_mode(
                 loop=loop,
                 legit_generator=legit_generator,
                 fraud_generator=fraud_generator,
