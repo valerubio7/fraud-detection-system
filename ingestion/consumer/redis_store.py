@@ -85,68 +85,48 @@ class RedisFeatureStore:
 
     def load_user_window(self, user_id: str) -> list[TransactionRaw]:
         """Load the cached window transactions for a user."""
-
-        if not self._is_available or self._client is None:
-            logger.debug("Redis unavailable; skipping load for user %s", user_id)
+        raw = self._get_json(self._window_key(user_id), "load window", user_id)
+        if raw is None:
             return []
-
-        try:
-            payload = self._client.get(self._window_key(user_id))
-        except redis.RedisError as exc:
-            self._handle_redis_error("load window", user_id, exc)
-            return []
-
-        if payload is None:
-            return []
-
-        try:
-            raw_items = json.loads(payload)
-        except json.JSONDecodeError as exc:
-            logger.error("Failed to decode window payload for user %s: %s", user_id, exc)
-            return []
-
-        if not isinstance(raw_items, list):
+        if not isinstance(raw, list):
             logger.error("Invalid window payload for user %s", user_id)
             return []
-
         transactions: list[TransactionRaw] = []
-        for item in raw_items:
+        for item in raw:
             if not isinstance(item, dict):
                 continue
             try:
                 transactions.append(self._deserialize_transaction(item))
             except (KeyError, ValueError) as exc:
                 logger.error("Failed to deserialize transaction for user %s: %s", user_id, exc)
-
         return transactions
 
     def load_user_historical(self, user_id: str) -> dict[str, Any] | None:
         """Load the cached historical profile for a user."""
-
-        if not self._is_available or self._client is None:
-            logger.debug("Redis unavailable; skipping load for user %s", user_id)
+        raw = self._get_json(self._historical_key(user_id), "load historical", user_id)
+        if raw is None:
             return None
-
-        try:
-            payload = self._client.get(self._historical_key(user_id))
-        except redis.RedisError as exc:
-            self._handle_redis_error("load historical", user_id, exc)
-            return None
-
-        if payload is None:
-            return None
-
-        try:
-            raw_profile = json.loads(payload)
-        except json.JSONDecodeError as exc:
-            logger.error("Failed to decode historical payload for user %s: %s", user_id, exc)
-            return None
-
-        if not isinstance(raw_profile, dict):
+        if not isinstance(raw, dict):
             logger.error("Invalid historical payload for user %s", user_id)
             return None
+        return raw
 
-        return raw_profile
+    def _get_json(self, key: str, action: str, user_id: str) -> Any:
+        if not self._is_available or self._client is None:
+            logger.debug("Redis unavailable; skipping %s for user %s", action, user_id)
+            return None
+        try:
+            payload = self._client.get(key)
+        except redis.RedisError as exc:
+            self._handle_redis_error(action, user_id, exc)
+            return None
+        if payload is None:
+            return None
+        try:
+            return json.loads(payload)
+        except json.JSONDecodeError as exc:
+            logger.error("Failed to decode %s payload for user %s: %s", action, user_id, exc)
+            return None
 
     def close(self) -> None:
         """Close the Redis connection."""

@@ -8,7 +8,6 @@ from uuid import UUID
 import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
 
-from .feature_models import HistoricalFeatures, WindowFeatures
 from .models import TransactionRaw
 
 logger = logging.getLogger(__name__)
@@ -54,12 +53,7 @@ class TimescaleWriter:
 
         return self._is_available
 
-    def write(
-        self,
-        transaction: TransactionRaw,
-        _window_features: WindowFeatures,
-        _historical_features: HistoricalFeatures,
-    ) -> None:
+    def write(self, transaction: TransactionRaw) -> None:
         """Insert a transaction row into TimescaleDB."""
 
         if not self._is_available or self._pool is None:

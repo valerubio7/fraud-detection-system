@@ -69,7 +69,7 @@ class SlidingWindowStore:
             if seconds_since_last_tx < 0:
                 seconds_since_last_tx = delta_seconds
 
-        tx_velocity_1h = float(tx_count_1h) / 1.0
+        tx_velocity_1h = float(tx_count_1h) / 60.0
 
         return WindowFeatures(
             tx_count_1h=tx_count_1h,
@@ -80,6 +80,30 @@ class SlidingWindowStore:
             tx_velocity_1h=tx_velocity_1h,
             seconds_since_last_tx=seconds_since_last_tx,
         )
+
+    def get_user_window(self, user_id: str) -> list[TransactionRaw]:
+        """Return a copy of the current window transactions for a user."""
+        history = self._history.get(user_id)
+        return list(history) if history else []
+
+    def hydrate(
+        self,
+        transactions: list[TransactionRaw],
+        reference_time: datetime,
+        max_window_seconds: int,
+    ) -> None:
+        """Populate the window from a persisted list, discarding stale entries."""
+        cutoff = reference_time.timestamp() - max_window_seconds
+        valid = sorted(
+            (
+                t
+                for t in transactions
+                if cutoff <= t.timestamp.timestamp() <= reference_time.timestamp()
+            ),
+            key=lambda t: t.timestamp,
+        )
+        for transaction in valid:
+            self.add(transaction)
 
     def _evict_old(self, history: deque[TransactionRaw], reference_time: datetime) -> None:
         cutoff = reference_time.timestamp() - self._max_window_seconds

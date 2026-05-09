@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from .feature_models import HistoricalFeatures
 from .models import TransactionRaw
@@ -64,6 +65,38 @@ class HistoricalProfileStore:
         profile.amount_count += 1
         profile.countries_seen.add(transaction.country)
         profile.merchants_seen.add(transaction.merchant_id)
+
+    def to_snapshot(self, user_id: str) -> dict[str, Any]:
+        """Return a JSON-serializable snapshot of the historical profile."""
+        profile = self._profiles.get(user_id)
+        if profile is None:
+            return {
+                "amount_total": 0.0,
+                "amount_count": 0,
+                "countries_seen": [],
+                "merchants_seen": [],
+            }
+        return {
+            "amount_total": float(profile.amount_total),
+            "amount_count": int(profile.amount_count),
+            "countries_seen": sorted(profile.countries_seen),
+            "merchants_seen": sorted(profile.merchants_seen),
+        }
+
+    def hydrate(self, user_id: str, raw_profile: dict[str, Any]) -> None:
+        """Restore a historical profile from a raw dict (e.g., loaded from Redis)."""
+        countries_raw = raw_profile.get("countries_seen", [])
+        merchants_raw = raw_profile.get("merchants_seen", [])
+        self._profiles[user_id] = _UserProfile(
+            amount_total=float(raw_profile.get("amount_total", 0.0)),
+            amount_count=int(raw_profile.get("amount_count", 0)),
+            countries_seen={str(c) for c in countries_raw}
+            if isinstance(countries_raw, list)
+            else set(),
+            merchants_seen={str(m) for m in merchants_raw}
+            if isinstance(merchants_raw, list)
+            else set(),
+        )
 
 
 __all__ = ["HistoricalProfileStore"]

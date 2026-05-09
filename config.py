@@ -155,14 +155,24 @@ def _load_settings(settings_cls: type[SettingsT]) -> SettingsT:
         raise RuntimeError(f"Error de configuracion en {settings_cls.__name__}: {exc}") from exc
 
 
-kafka_settings = _load_settings(KafkaSettings)
-postgres_settings = _load_settings(PostgreSQLSettings)
-timescaledb_settings = _load_settings(TimescaleDBSettings)
-redis_settings = _load_settings(RedisSettings)
-mlflow_settings = _load_settings(MLflowSettings)
-model_settings = _load_settings(ModelSettings)
-airflow_settings = _load_settings(AirflowSettings)
-grafana_settings = _load_settings(GrafanaSettings)
+_SETTINGS_REGISTRY: dict[str, type[BaseSettings]] = {
+    "kafka_settings": KafkaSettings,
+    "postgres_settings": PostgreSQLSettings,
+    "timescaledb_settings": TimescaleDBSettings,
+    "redis_settings": RedisSettings,
+    "mlflow_settings": MLflowSettings,
+    "model_settings": ModelSettings,
+    "airflow_settings": AirflowSettings,
+    "grafana_settings": GrafanaSettings,
+}
+
+
+def __getattr__(name: str) -> BaseSettings:
+    if name in _SETTINGS_REGISTRY:
+        value = _load_settings(_SETTINGS_REGISTRY[name])
+        globals()[name] = value
+        return value  # type: ignore[return-value]
+    raise AttributeError(f"module 'config' has no attribute {name!r}")
 
 
 __all__ = [
@@ -174,12 +184,12 @@ __all__ = [
     "ModelSettings",
     "AirflowSettings",
     "GrafanaSettings",
-    "kafka_settings",
-    "postgres_settings",
-    "timescaledb_settings",
-    "redis_settings",
-    "mlflow_settings",
-    "model_settings",
-    "airflow_settings",
-    "grafana_settings",
+    "kafka_settings",  # noqa: F822
+    "postgres_settings",  # noqa: F822
+    "timescaledb_settings",  # noqa: F822
+    "redis_settings",  # noqa: F822
+    "mlflow_settings",  # noqa: F822
+    "model_settings",  # noqa: F822
+    "airflow_settings",  # noqa: F822
+    "grafana_settings",  # noqa: F822
 ]
