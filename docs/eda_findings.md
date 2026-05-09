@@ -2,7 +2,7 @@
 
 ## Resumen ejecutivo
 
-El dataset analizado contiene 10 000 transacciones bancarias sintéticas generadas con seed fijo (seed=42), distribuidas en una ventana de 30 días. Cada transacción incluye información del usuario, comercio, monto, país, dispositivo y marca temporal. La tasa de fraude es del **2 %** (200 transacciones fraudulentas sobre 9 800 legítimas). Los patrones de fraude fueron inyectados de forma controlada siguiendo cuatro modelos: monto atípico, país inusual, alta frecuencia y merchant desconocido con monto elevado. El objetivo de este análisis es identificar las features con mayor poder discriminativo y definir las decisiones de ingeniería de features para las tareas 4.2.x.
+El dataset analizado contiene 10 000 transacciones bancarias sintéticas generadas con seed fijo (seed=42), distribuidas en una ventana de 30 días. Cada transacción incluye información del usuario, comercio, monto, país, dispositivo y marca temporal. La tasa de fraude es del **2 %** (200 transacciones fraudulentas sobre 9 800 legítimas). Los patrones de fraude fueron inyectados de forma controlada siguiendo cuatro modelos: monto atípico, país inusual, alta frecuencia y merchant desconocido con monto elevado. El objetivo de este análisis es identificar las features con mayor poder discriminativo y definir las decisiones de ingeniería de features.
 
 ---
 
@@ -36,7 +36,7 @@ Dado que la distribución horaria no es uniforme y se observan ventanas de mayor
 - **Categoría de merchant (`merchant_category`)**: Es la feature con mayor importancia en el RandomForest (~40 %), lo que sugiere que ciertos tipos de comercio están sobrerepresentados en fraude (vinculado al patrón de *merchant desconocido con monto alto*). La distribución entre las 7 categorías no es uniforme en términos de tasa de fraude.
 - **Tipo de dispositivo (`device_type`)**: Distribución mobile 60 % / web 30 % / pos 10 %. La importancia en el modelo simple es ~1 %, lo que indica señal débil en los datos actuales.
 
-Para las tres variables se requerirá encoding. El **target encoding** es el candidato preferido dado que preserva la relación con la variable objetivo, pero introduce riesgo de data leakage si no se aplica con cross-validation — esto se evaluará en la tarea 4.2.x.
+Para las tres variables se requerirá encoding. El **target encoding** es el candidato preferido dado que preserva la relación con la variable objetivo, pero introduce riesgo de data leakage si no se aplica con cross-validation.
 
 ---
 
@@ -71,7 +71,7 @@ El modelo simple (RandomForestClassifier con `n_estimators=50`, `max_depth=5`) n
 | `device_type` | Señal baja en datos sintéticos pero relevante en producción; bajo costo computacional |
 | `day_of_week` (sin/cos) | Señal limitada en datos sintéticos; retener para patrones de producción |
 
-### Features derivadas (requieren ventanas temporales — implementadas en Fase 3)
+### Features derivadas
 
 | Feature | Justificación |
 |---|---|
