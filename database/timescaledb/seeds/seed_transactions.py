@@ -262,7 +262,8 @@ def insert_transactions(connection, transactions: list[dict], batch_size: int) -
         "INSERT INTO public.transactions "
         "(transaction_id, user_id, merchant_id, merchant_category, amount, country, "
         '"timestamp", device_type, ip_hash, is_fraud, model_score, latency_ms) '
-        "VALUES %s"
+        "VALUES %s "
+        "ON CONFLICT (transaction_id, timestamp) DO NOTHING"
     )
     total = len(transactions)
     inserted = 0

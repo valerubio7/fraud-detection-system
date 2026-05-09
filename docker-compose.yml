@@ -168,6 +168,53 @@ services:
     networks:
       - mlops-net
 
+  airflow-init:
+    build:
+      context: .
+      dockerfile: docker/airflow/Dockerfile
+    restart: "no"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY}
+      AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+    command:
+      - bash
+      - -c
+      - |
+        python - <<'EOF'
+        import os, psycopg2
+        conn = psycopg2.connect(
+            host="postgresql",
+            user=os.environ["POSTGRES_USER"],
+            password=os.environ["POSTGRES_PASSWORD"],
+            dbname=os.environ["POSTGRES_DB"],
+        )
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM pg_database WHERE datname='airflow_metadata'")
+        if not cur.fetchone():
+            cur.execute("CREATE DATABASE airflow_metadata")
+        conn.close()
+        EOF
+        airflow db migrate &&
+        airflow users create \
+          --username "$AIRFLOW_ADMIN_USER" \
+          --password "$AIRFLOW_ADMIN_PASSWORD" \
+          --firstname Admin --lastname User \
+          --role Admin \
+          --email admin@fraudmlops.local 2>/dev/null || true
+    networks:
+      - mlops-net
+
   airflow-webserver:
     build:
       context: .
@@ -269,6 +316,28 @@ services:
         condition: service_healthy
     environment:
       KAFKA_BROKER_URL: ${KAFKA_BROKER_URL}
+    networks:
+      - mlops-net
+
+  consumer:
+    build:
+      context: .
+      dockerfile: docker/consumer/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_URL: ${KAFKA_BROKER_URL}
+      KAFKA_TOPICS_RAW: ${KAFKA_TOPICS_RAW}
+      KAFKA_TOPICS_FEATURES: ${KAFKA_TOPICS_FEATURES}
+      TIMESCALE_USER: ${TIMESCALE_USER}
+      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD}
+      TIMESCALE_DB: ${TIMESCALE_DB}
     networks:
       - mlops-net
 

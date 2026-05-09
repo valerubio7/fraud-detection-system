@@ -112,6 +112,10 @@ check_airflow_scheduler() {
   docker compose exec -T airflow-scheduler sh -lc 'airflow jobs check --job-type SchedulerJob --hostname "$HOSTNAME"' >/dev/null 2>&1
 }
 
+check_airflow_init() {
+  docker compose ps --all airflow-init 2>/dev/null | grep -q "Exited (0)"
+}
+
 check_grafana() {
   curl -fsS http://localhost:3000/api/health >/dev/null 2>&1
 }
@@ -285,7 +289,7 @@ print_step "Etapa 2/5 — Construyendo imágenes locales"
 docker compose build
 
 print_step "Etapa 2/5 — Levantando servicios base (Airflow inicia luego)"
-docker compose up -d --scale airflow-webserver=0 --scale airflow-scheduler=0
+docker compose up -d --scale airflow-webserver=0 --scale airflow-scheduler=0 --scale airflow-init=0
 print_success "Stack levantado"
 
 # ============================================================================
@@ -304,28 +308,12 @@ wait_for_service "fastapi" check_fastapi 60 3
 # ============================================================================
 print_step "Etapa 4/5 — Inicializando Airflow, Kafka y migraciones SQL"
 
-print_step "Airflow: creando base de datos metadata (si no existe)"
-docker compose exec -T postgresql psql \
-  -U "${POSTGRES_USER}" \
-  -d "${POSTGRES_DB}" \
-  -c "SELECT 1 FROM pg_database WHERE datname='airflow_metadata';" | grep -q 1 \
-  || docker compose exec -T postgresql psql \
-    -U "${POSTGRES_USER}" \
-    -d "${POSTGRES_DB}" \
-    -c "CREATE DATABASE airflow_metadata;"
-
-print_step "Airflow: ejecutando migraciones de metadata"
-docker compose run --rm --no-deps airflow-webserver airflow db migrate
-print_success "Airflow DB migrada"
-
-print_step "Airflow: asegurando usuario administrador"
-docker compose run --rm --no-deps airflow-webserver airflow users create \
-  --username "${AIRFLOW_ADMIN_USER}" \
-  --password "${AIRFLOW_ADMIN_PASSWORD}" \
-  --firstname Admin \
-  --lastname User \
-  --role Admin \
-  --email admin@fraudmlops.local 2>/dev/null || true
+print_step "Airflow: esperando que airflow-init complete (crea BD, migra esquema, crea admin)"
+if ! docker compose ps --all airflow-init 2>/dev/null | grep -q "Exited (0)"; then
+  docker compose up -d airflow-init
+fi
+wait_for_service "airflow-init" check_airflow_init 120 5
+docker compose rm -f airflow-init >/dev/null 2>&1 || true
 
 print_step "Airflow: levantando webserver y scheduler"
 docker compose up -d airflow-webserver airflow-scheduler

@@ -30,11 +30,3 @@ datasources:
       postgresVersion: 1500
       timescaledb: false
     editable: true
-
-  - name: Prometheus
-    uid: prometheus
-    type: prometheus
-    access: proxy
-    url: http://prometheus:9090
-    isDefault: true
-    editable: true
