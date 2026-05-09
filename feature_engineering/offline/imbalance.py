@@ -1,0 +1,304 @@
+"""
+Class imbalance handling for fraud detection model training.
+
+Provides two strategies to address the ~49:1 class imbalance in the fraud dataset:
+- SMOTE (synthetic oversampling of the minority class via imbalanced-learn)
+- scale_pos_weight (XGBoost internal class weighting)
+
+Use ``run_imbalance_analysis`` to compare both strategies on a validation set and
+get a recommendation based on F1 score.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+
+import pandas as pd
+from imblearn.over_sampling import SMOTE
+from sklearn.metrics import (
+    average_precision_score,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
+from xgboost import XGBClassifier
+
+logger = logging.getLogger(__name__)
+
+_XGBOOST_BASE_PARAMS: dict = {
+    "n_estimators": 100,
+    "max_depth": 4,
+    "learning_rate": 0.1,
+    "eval_metric": "aucpr",
+}
+
+
+def compute_scale_pos_weight(y: pd.Series) -> float:
+    """Compute XGBoost's scale_pos_weight as n_negatives / n_positives.
+
+    Args:
+        y: Binary label series (0 = legitimate, 1 = fraud).
+
+    Returns:
+        Ratio of negative to positive examples.
+
+    Raises:
+        ValueError: If there are no positive examples in y.
+    """
+    n_pos = int((y == 1).sum())
+    if n_pos == 0:
+        raise ValueError(
+            "No positive examples (fraud=1) found in y. Cannot compute scale_pos_weight."
+        )
+    n_neg = int((y == 0).sum())
+    return n_neg / n_pos
+
+
+def apply_smote(
+    X: pd.DataFrame,
+    y: pd.Series,
+    sampling_strategy: float = 0.1,
+    random_state: int = 42,
+) -> tuple[pd.DataFrame, pd.Series]:
+    """Apply SMOTE oversampling to the minority (fraud) class.
+
+    Args:
+        X: Feature DataFrame for the training set.
+        y: Binary label series aligned with X (0 = legitimate, 1 = fraud).
+        sampling_strategy: Target ratio of minority to majority class after resampling.
+            0.1 means fraud examples will be 10% of legitimate examples after SMOTE.
+        random_state: Random seed for reproducibility.
+
+    Returns:
+        Tuple (X_resampled, y_resampled) as DataFrame and Series respectively,
+        preserving the original column names of X.
+    """
+    counts_before = y.value_counts().to_dict()
+    logger.info(
+        "Class distribution before SMOTE — legitimate: %d, fraud: %d",
+        counts_before.get(0, 0),
+        counts_before.get(1, 0),
+    )
+
+    smote = SMOTE(sampling_strategy=sampling_strategy, random_state=random_state)
+    X_res, y_res = smote.fit_resample(X, y)
+
+    X_resampled = pd.DataFrame(X_res, columns=X.columns)
+    y_resampled = pd.Series(y_res, name=y.name)
+
+    counts_after = y_resampled.value_counts().to_dict()
+    logger.info(
+        "Class distribution after SMOTE  — legitimate: %d, fraud: %d",
+        counts_after.get(0, 0),
+        counts_after.get(1, 0),
+    )
+
+    return X_resampled, y_resampled
+
+
+def evaluate_imbalance_strategy(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    X_val: pd.DataFrame,
+    y_val: pd.Series,
+    random_state: int = 42,
+) -> dict[str, dict[str, float]]:
+    """Train an XGBClassifier under each imbalance strategy and evaluate on the validation set.
+
+    Two strategies are compared:
+    - ``"smote"``: Apply SMOTE (sampling_strategy=0.1) before training; no scale_pos_weight.
+    - ``"scale_pos_weight"``: Train with scale_pos_weight=n_neg/n_pos; no resampling.
+
+    Both models share the same base hyperparameters (n_estimators=100, max_depth=4,
+    learning_rate=0.1, eval_metric="aucpr") and are evaluated on the **unmodified**
+    validation set.
+
+    Args:
+        X_train: Training features.
+        y_train: Training labels (0/1).
+        X_val: Validation features (never resampled).
+        y_val: Validation labels (0/1).
+        random_state: Random seed for reproducibility.
+
+    Returns:
+        Dict mapping strategy name to a dict of metrics:
+        ``{"smote": {"f1": …, "precision": …, "recall": …, "roc_auc": …,
+        "average_precision": …}, "scale_pos_weight": {…}}``.
+    """
+    results: dict[str, dict[str, float]] = {}
+
+    # --- SMOTE strategy ---
+    X_smote, y_smote = apply_smote(X_train, y_train, random_state=random_state)
+    model_smote = XGBClassifier(**_XGBOOST_BASE_PARAMS, random_state=random_state)
+    model_smote.fit(X_smote, y_smote)
+    results["smote"] = _compute_metrics(model_smote, X_val, y_val)
+    logger.info("SMOTE strategy metrics: %s", results["smote"])
+
+    # --- scale_pos_weight strategy ---
+    spw = compute_scale_pos_weight(y_train)
+    model_spw = XGBClassifier(
+        **_XGBOOST_BASE_PARAMS,
+        scale_pos_weight=spw,
+        random_state=random_state,
+    )
+    model_spw.fit(X_train, y_train)
+    results["scale_pos_weight"] = _compute_metrics(model_spw, X_val, y_val)
+    logger.info("scale_pos_weight=%.2f strategy metrics: %s", spw, results["scale_pos_weight"])
+
+    return results
+
+
+def _compute_metrics(model: XGBClassifier, X: pd.DataFrame, y: pd.Series) -> dict[str, float]:
+    y_pred = model.predict(X)
+    y_proba = model.predict_proba(X)[:, 1]
+    return {
+        "f1": float(f1_score(y, y_pred, zero_division=0)),
+        "precision": float(precision_score(y, y_pred, zero_division=0)),
+        "recall": float(recall_score(y, y_pred, zero_division=0)),
+        "roc_auc": float(roc_auc_score(y, y_proba)),
+        "average_precision": float(average_precision_score(y, y_proba)),
+    }
+
+
+@dataclass
+class ImbalanceReport:
+    """Summary of the imbalance strategy comparison.
+
+    Attributes:
+        strategy_results: Metrics for each evaluated strategy.
+        recommended_strategy: Strategy with the highest F1 score on validation.
+        recommended_scale_pos_weight: Computed scale_pos_weight value if the recommended
+            strategy is "scale_pos_weight", else None.
+        class_distribution: Original class counts in the training set before any resampling.
+    """
+
+    strategy_results: dict[str, dict[str, float]]
+    recommended_strategy: str
+    recommended_scale_pos_weight: float | None
+    class_distribution: dict[str, int]
+
+
+def run_imbalance_analysis(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    X_val: pd.DataFrame,
+    y_val: pd.Series,
+    random_state: int = 42,
+) -> ImbalanceReport:
+    """Run the full imbalance strategy analysis and return a structured report.
+
+    Evaluates SMOTE and scale_pos_weight strategies, picks the one with higher F1
+    on the validation set, and returns an ``ImbalanceReport`` with all details.
+
+    Args:
+        X_train: Training features.
+        y_train: Training labels (0/1).
+        X_val: Validation features (never resampled).
+        y_val: Validation labels (0/1).
+        random_state: Random seed for reproducibility.
+
+    Returns:
+        ImbalanceReport with strategy metrics, recommendation, and class distribution.
+    """
+    class_distribution = {
+        "legitimate": int((y_train == 0).sum()),
+        "fraud": int((y_train == 1).sum()),
+    }
+    logger.info(
+        "Training class distribution — legitimate: %d, fraud: %d",
+        class_distribution["legitimate"],
+        class_distribution["fraud"],
+    )
+
+    strategy_results = evaluate_imbalance_strategy(X_train, y_train, X_val, y_val, random_state)
+
+    recommended = max(strategy_results, key=lambda s: strategy_results[s]["f1"])
+    recommended_spw = (
+        compute_scale_pos_weight(y_train) if recommended == "scale_pos_weight" else None
+    )
+
+    report = ImbalanceReport(
+        strategy_results=strategy_results,
+        recommended_strategy=recommended,
+        recommended_scale_pos_weight=recommended_spw,
+        class_distribution=class_distribution,
+    )
+
+    best_metrics = strategy_results[recommended]
+    logger.info(
+        "Recommended strategy: %s | F1=%.4f | Precision=%.4f | Recall=%.4f | "
+        "ROC-AUC=%.4f | Avg Precision=%.4f",
+        recommended,
+        best_metrics["f1"],
+        best_metrics["precision"],
+        best_metrics["recall"],
+        best_metrics["roc_auc"],
+        best_metrics["average_precision"],
+    )
+
+    return report
+
+
+__all__ = [
+    "apply_smote",
+    "compute_scale_pos_weight",
+    "evaluate_imbalance_strategy",
+    "run_imbalance_analysis",
+    "ImbalanceReport",
+]
+
+
+if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+
+    import psycopg2  # noqa: E402
+
+    import config  # noqa: E402
+    from feature_engineering.offline.featurizer import TransactionFeaturizer  # noqa: E402
+
+    settings = config.timescaledb_settings
+    conn = psycopg2.connect(
+        host=settings.host,
+        port=settings.port,
+        user=settings.user,
+        password=settings.password,
+        dbname=settings.db,
+    )
+
+    query = """
+        SELECT
+            transaction_id, user_id, merchant_id, merchant_category,
+            amount, country, device_type, ip_hash, timestamp, is_fraud
+        FROM public.transactions
+        ORDER BY timestamp
+    """
+    df = pd.read_sql(query, conn)
+    conn.close()
+    print(f"Cargadas {len(df):,} transacciones desde TimescaleDB.")
+
+    featurizer = TransactionFeaturizer()
+    y_full = df["is_fraud"].astype(int)
+    X_full = featurizer.fit_transform(df, y_full)
+
+    split = int(len(X_full) * 0.8)
+    X_train, X_val = X_full.iloc[:split], X_full.iloc[split:]
+    y_train, y_val = y_full.iloc[:split], y_full.iloc[split:]
+
+    report = run_imbalance_analysis(X_train, y_train, X_val, y_val)
+
+    print("\n=== ImbalanceReport ===")
+    print(f"Distribución de clases (train): {report.class_distribution}")
+    print(f"Estrategia recomendada: {report.recommended_strategy}")
+    if report.recommended_scale_pos_weight is not None:
+        print(f"scale_pos_weight sugerido: {report.recommended_scale_pos_weight:.2f}")
+    for strategy, metrics in report.strategy_results.items():
+        print(f"\n[{strategy}]")
+        for metric, value in metrics.items():
+            print(f"  {metric}: {value:.4f}")

@@ -36,6 +36,10 @@ notebooks = [
   "scikit-learn>=1.4.0,<2.0.0",
   "seaborn>=0.13.0,<1.0.0",
 ]
+model = [
+  "imbalanced-learn>=0.12.0,<1.0.0",
+  "xgboost>=2.0.0,<3.0.0",
+]
 
 [tool.ruff]
 line-length = 100
