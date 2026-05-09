@@ -11,17 +11,17 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import joblib
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import OrdinalEncoder
+
+from feature_engineering.offline.encoders import CategoricalEncoderPipeline
 
 _ONE_HOUR_NS = np.int64(3_600 * 1_000_000_000)
 _TWENTY_FOUR_HOURS_NS = np.int64(86_400 * 1_000_000_000)
 _SEVEN_DAYS_NS = np.int64(604_800 * 1_000_000_000)
 
 CATEGORICAL_COLUMNS: list[str] = ["merchant_category", "country", "device_type"]
-ENCODER_FILENAME = "ordinal_encoder.joblib"
+ENCODER_FILENAME = "categorical_encoder.joblib"
 
 DIRECT_FEATURES: list[str] = [
     "log_amount",
@@ -208,7 +208,7 @@ class TransactionFeaturizer:
     Example::
 
         featurizer = TransactionFeaturizer(encoders_dir="artifacts/encoders")
-        X_train = featurizer.fit_transform(df_train)
+        X_train = featurizer.fit_transform(df_train, y_train)
         X_test = featurizer.transform(df_test)
     """
 
@@ -220,36 +220,33 @@ class TransactionFeaturizer:
                 ``fit()`` and loaded automatically on ``__init__`` if the file exists.
         """
         self._encoders_dir = Path(encoders_dir) if encoders_dir is not None else None
-        self._encoder: OrdinalEncoder | None = None
+        self._cat_pipeline: CategoricalEncoderPipeline | None = None
         self._is_fitted = False
 
         if self._encoders_dir is not None:
             encoder_path = self._encoders_dir / ENCODER_FILENAME
             if encoder_path.exists():
-                self._encoder = joblib.load(encoder_path)
+                self._cat_pipeline = CategoricalEncoderPipeline.load(encoder_path)
                 self._is_fitted = True
 
-    def fit(self, df: pd.DataFrame) -> TransactionFeaturizer:
-        """Fit ordinal encoders for categorical columns on training data.
+    def fit(self, df: pd.DataFrame, y: pd.Series) -> TransactionFeaturizer:
+        """Fit categorical encoders on training data.
 
         Args:
             df: Training DataFrame with at least the columns defined in
                 ``_REQUIRED_COLUMNS``.
+            y: Binary target series aligned with df (the ``is_fraud`` column).
 
         Returns:
             self, for method chaining.
         """
         self._validate_columns(df)
-        self._encoder = OrdinalEncoder(
-            handle_unknown="use_encoded_value",
-            unknown_value=-1,
-            dtype=np.float64,
-        )
-        self._encoder.fit(df[CATEGORICAL_COLUMNS].astype(str).values)
+        self._cat_pipeline = CategoricalEncoderPipeline()
+        self._cat_pipeline.fit(df, y)
 
         if self._encoders_dir is not None:
             self._encoders_dir.mkdir(parents=True, exist_ok=True)
-            joblib.dump(self._encoder, self._encoders_dir / ENCODER_FILENAME)
+            self._cat_pipeline.save(self._encoders_dir / ENCODER_FILENAME)
 
         self._is_fitted = True
         return self
@@ -271,7 +268,7 @@ class TransactionFeaturizer:
         Raises:
             RuntimeError: If called before ``fit()`` or loading a pre-fitted encoder.
         """
-        if not self._is_fitted or self._encoder is None:
+        if not self._is_fitted or self._cat_pipeline is None:
             raise RuntimeError("Call fit() before transform().")
         self._validate_columns(df)
 
@@ -287,13 +284,20 @@ class TransactionFeaturizer:
         countries = df["country"].values.astype(str)[sort_idx]
         merchants = df["merchant_id"].values.astype(str)[sort_idx]
         user_ids = user_arr[sort_idx]
-        cat_vals = df[CATEGORICAL_COLUMNS].astype(str).values[sort_idx]
 
         n = len(df)
         dti = pd.DatetimeIndex(times_ns)
 
         # --- Direct features (fully vectorised) ---
-        cat_encoded = self._encoder.transform(cat_vals)
+        cat_df = pd.DataFrame(
+            {
+                "merchant_category": df["merchant_category"].values.astype(str)[sort_idx],
+                "country": countries,
+                "device_type": df["device_type"].values.astype(str)[sort_idx],
+            }
+        )
+        cat_result = self._cat_pipeline.transform(cat_df)
+
         log_amount = np.log1p(amounts)
         hour_of_day = dti.hour.to_numpy(dtype=np.int64)
         day_of_week = dti.dayofweek.to_numpy(dtype=np.int64)
@@ -345,9 +349,11 @@ class TransactionFeaturizer:
                 "log_amount": log_amount,
                 "hour_of_day": hour_of_day,
                 "day_of_week": day_of_week,
-                "merchant_category_encoded": cat_encoded[:, 0],
-                "country_encoded": cat_encoded[:, 1],
-                "device_type_encoded": cat_encoded[:, 2],
+                "merchant_category_encoded": cat_result["merchant_category_encoded"].to_numpy(
+                    dtype=np.float64
+                ),
+                "country_encoded": cat_result["country_encoded"].to_numpy(dtype=np.float64),
+                "device_type_encoded": cat_result["device_type_encoded"].to_numpy(dtype=np.float64),
                 "tx_count_1h": w_tx_1h,
                 "tx_count_24h": w_tx_24h,
                 "tx_count_7d": w_tx_7d,
@@ -366,16 +372,17 @@ class TransactionFeaturizer:
         out.index = df.index
         return out
 
-    def fit_transform(self, df: pd.DataFrame) -> pd.DataFrame:
+    def fit_transform(self, df: pd.DataFrame, y: pd.Series) -> pd.DataFrame:
         """Fit encoders on df and return its computed features.
 
         Args:
             df: Training DataFrame with at least the columns in ``_REQUIRED_COLUMNS``.
+            y: Binary target series aligned with df (the ``is_fraud`` column).
 
         Returns:
             DataFrame with all engineered features.
         """
-        return self.fit(df).transform(df)
+        return self.fit(df, y).transform(df)
 
     def get_feature_names(self) -> list[str]:
         """Return the ordered list of output feature column names.
@@ -430,7 +437,7 @@ if __name__ == "__main__":
     print(f"Cargadas {len(df):,} transacciones desde TimescaleDB.")
 
     featurizer = TransactionFeaturizer()
-    X = featurizer.fit_transform(df)
+    X = featurizer.fit_transform(df, df["is_fraud"])
 
     print(f"Shape del feature matrix: {X.shape}")
     print(f"Features: {featurizer.get_feature_names()}")
