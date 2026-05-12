@@ -5,14 +5,19 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import socket
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import joblib
+import mlflow
+import mlflow.xgboost
 import numpy as np
 import pandas as pd
 import psycopg2
+from mlflow.models import infer_signature
 from xgboost import XGBClassifier
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -36,6 +41,11 @@ def parse_args() -> argparse.Namespace:
         help="Directory to save training artifacts.",
     )
     parser.add_argument("--limit", type=int, default=None, help="Limit number of rows.")
+    parser.add_argument(
+        "--no-mlflow",
+        action="store_true",
+        help="Disable MLflow tracking.",
+    )
     return parser.parse_args()
 
 
@@ -162,6 +172,19 @@ def save_metadata(
     return metadata_path
 
 
+def update_metadata_with_mlflow(
+    metadata_path: Path,
+    run_id: str,
+    experiment_name: str,
+) -> None:
+    with metadata_path.open("r", encoding="utf-8") as handle:
+        metadata = json.load(handle)
+    metadata["mlflow_run_id"] = run_id
+    metadata["mlflow_experiment_name"] = experiment_name
+    with metadata_path.open("w", encoding="utf-8") as handle:
+        json.dump(metadata, handle, indent=2)
+
+
 def log_summary(
     y_full: pd.Series,
     split_sizes: dict[str, int],
@@ -184,6 +207,118 @@ def log_summary(
     logger.info("Artifacts saved to: %s", output_dir)
 
 
+def is_tracking_uri_available(tracking_uri: str, timeout_seconds: float = 2.0) -> bool:
+    parsed = urlparse(tracking_uri)
+    if parsed.scheme not in {"http", "https"}:
+        return True
+
+    host = parsed.hostname
+    if host is None:
+        return False
+
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        with socket.create_connection((host, port), timeout=timeout_seconds):
+            return True
+    except OSError:
+        return False
+
+
+def start_mlflow_run(
+    disable_mlflow: bool,
+) -> tuple[mlflow.ActiveRun | None, str | None, str | None]:
+    if disable_mlflow:
+        return None, None, None
+
+    try:
+        mlflow_settings = config.mlflow_settings
+        tracking_uri = mlflow_settings.tracking_uri
+        if not is_tracking_uri_available(tracking_uri):
+            logger.warning("MLflow tracking unavailable at %s", tracking_uri)
+            return None, None, None
+        mlflow.set_tracking_uri(tracking_uri)
+        mlflow.set_experiment(mlflow_settings.experiment_name)
+        run_name = f"train-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"
+        run = mlflow.start_run(run_name=run_name)
+        return run, tracking_uri, mlflow_settings.experiment_name
+    except Exception as exc:
+        logger.warning("MLflow tracking unavailable: %s", exc)
+        return None, None, None
+
+
+def log_mlflow_outputs(
+    model: XGBClassifier,
+    X_val: pd.DataFrame,
+    y_train: pd.Series,
+    output_dir: Path,
+    params: dict[str, object],
+    scale_pos_weight: float,
+    seed: int,
+    split_sizes: dict[str, int],
+    training_data_from: str,
+    training_data_to: str,
+    features: list[str],
+) -> tuple[str, str]:
+    active_run = mlflow.active_run()
+    if active_run is None:
+        raise RuntimeError("MLflow run is not active.")
+
+    mlflow.log_params(
+        {
+            "n_estimators": params["n_estimators"],
+            "max_depth": params["max_depth"],
+            "learning_rate": params["learning_rate"],
+            "min_child_weight": params["min_child_weight"],
+            "subsample": params["subsample"],
+            "colsample_bytree": params["colsample_bytree"],
+            "early_stopping_rounds": params["early_stopping_rounds"],
+            "scale_pos_weight": float(scale_pos_weight),
+            "seed": seed,
+            "train_size": split_sizes["train"],
+            "val_size": split_sizes["validation"],
+            "test_size": split_sizes["test"],
+            "training_data_from": training_data_from,
+            "training_data_to": training_data_to,
+            "n_features": len(features),
+            "features": ",".join(features),
+        }
+    )
+
+    best_iteration = model.best_iteration
+    best_iteration_value = int(best_iteration) if best_iteration is not None else -1
+    n_total = int(len(y_train))
+    n_fraud = int(y_train.sum())
+    class_ratio = float(n_fraud / n_total) if n_total else 0.0
+    mlflow.log_metrics(
+        {
+            "best_iteration": float(best_iteration_value),
+            "class_ratio": class_ratio,
+        }
+    )
+
+    update_metadata_with_mlflow(
+        output_dir / "training_metadata.json",
+        active_run.info.run_id,
+        mlflow.get_experiment(active_run.info.experiment_id).name,
+    )
+    mlflow.log_artifacts(str(output_dir))
+
+    signature = infer_signature(X_val, model.predict(X_val))
+    input_example = X_val.head(5)
+    model_name = config.model_settings.model_name
+    if not hasattr(model, "_estimator_type"):
+        model._estimator_type = "classifier"
+    mlflow.xgboost.log_model(
+        xgb_model=model,
+        artifact_path="model",
+        registered_model_name=model_name,
+        signature=signature,
+        input_example=input_example,
+    )
+
+    return active_run.info.run_id, active_run.info.experiment_id
+
+
 def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -192,6 +327,8 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    mlflow_run, tracking_uri, _ = start_mlflow_run(args.no_mlflow)
+
     df = load_transactions(args.limit)
     if df.empty:
         raise RuntimeError("No transactions loaded from TimescaleDB.")
@@ -199,6 +336,11 @@ def main() -> None:
     df = df[df["is_fraud"].notna()].copy()
     if df.empty:
         raise RuntimeError("No labeled transactions available for training.")
+
+    ts_min = pd.to_datetime(df["timestamp"]).min()
+    ts_max = pd.to_datetime(df["timestamp"]).max()
+    training_data_from = ts_min.isoformat() if pd.notna(ts_min) else ""
+    training_data_to = ts_max.isoformat() if pd.notna(ts_max) else ""
 
     y_full = df["is_fraud"].astype(int)
     X_full, _ = build_features(df, y_full, output_dir, args.seed)
@@ -236,10 +378,37 @@ def main() -> None:
         scale_pos_weight=scale_pos_weight,
         split_sizes=split_sizes,
     )
+    if mlflow_run is not None:
+        try:
+            run_id, experiment_id = log_mlflow_outputs(
+                model=model,
+                X_val=X_val,
+                y_train=y_train,
+                output_dir=output_dir,
+                params=params,
+                scale_pos_weight=scale_pos_weight,
+                seed=args.seed,
+                split_sizes=split_sizes,
+                training_data_from=training_data_from,
+                training_data_to=training_data_to,
+                features=SELECTED_FEATURES,
+            )
+            if tracking_uri is not None:
+                run_url = f"{tracking_uri}/#/experiments/{experiment_id}/runs/{run_id}"
+                print(f"MLflow run_id: {run_id}")
+                print(f"MLflow run URL: {run_url}")
+        except Exception as exc:
+            logger.warning("MLflow logging failed: %s", exc)
     log_summary(y_full, split_sizes, params, output_dir)
     logger.info("Model saved: %s", model_path)
     logger.info("Encoder saved: %s", output_dir / "categorical_encoder.joblib")
     logger.info("Metadata saved: %s", output_dir / "training_metadata.json")
+
+    if mlflow_run is not None:
+        try:
+            mlflow.end_run()
+        except Exception as exc:
+            logger.warning("Failed to finalize MLflow run: %s", exc)
 
 
 if __name__ == "__main__":
