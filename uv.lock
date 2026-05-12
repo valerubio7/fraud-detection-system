@@ -874,6 +874,7 @@ consumer = [
 model = [
     { name = "boruta" },
     { name = "imbalanced-learn" },
+    { name = "matplotlib" },
     { name = "mlflow" },
     { name = "optuna" },
     { name = "xgboost" },
@@ -914,6 +915,7 @@ consumer = [
 model = [
     { name = "boruta", specifier = ">=0.3.0" },
     { name = "imbalanced-learn", specifier = ">=0.12.0,<1.0.0" },
+    { name = "matplotlib", specifier = ">=3.8.0,<4.0.0" },
     { name = "mlflow", specifier = "==2.17.2" },
     { name = "optuna", specifier = ">=3.0.0,<4.0.0" },
     { name = "xgboost", specifier = "==2.0.3" },

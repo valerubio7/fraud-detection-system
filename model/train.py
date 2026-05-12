@@ -13,11 +13,9 @@ from urllib.parse import urlparse
 
 import joblib
 import mlflow
-import mlflow.xgboost
 import numpy as np
 import pandas as pd
 import psycopg2
-from mlflow.models import infer_signature
 from xgboost import XGBClassifier
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -26,6 +24,15 @@ import config
 from feature_engineering.offline.featurizer import TransactionFeaturizer
 from feature_engineering.offline.imbalance import compute_scale_pos_weight
 from feature_engineering.offline.selection import select_features
+from model.evaluate import (
+    evaluate_model,
+    find_optimal_threshold,
+    save_confusion_matrix_plot,
+    save_feature_importance_plot,
+    save_pr_curve_plot,
+    save_roc_curve_plot,
+    save_threshold_analysis_plot,
+)
 from model.features import SELECTED_FEATURES
 from model.tuning import run_optuna_study
 
@@ -63,6 +70,24 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="Optional Optuna timeout in seconds.",
+    )
+    parser.add_argument(
+        "--cost-fn",
+        type=float,
+        default=100.0,
+        help="Cost of a false negative (missed fraud).",
+    )
+    parser.add_argument(
+        "--cost-fp",
+        type=float,
+        default=5.0,
+        help="Cost of a false positive (blocked legitimate).",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help="Fixed classification threshold override.",
     )
     return parser.parse_args()
 
@@ -170,6 +195,7 @@ def save_metadata(
     scale_pos_weight: float,
     split_sizes: dict[str, int],
     tuning_metadata: dict[str, object],
+    evaluation_metadata: dict[str, object],
 ) -> Path:
     ts_min = pd.to_datetime(df["timestamp"]).min()
     ts_max = pd.to_datetime(df["timestamp"]).max()
@@ -182,6 +208,7 @@ def save_metadata(
         "hyperparameters": params,
         "scale_pos_weight": scale_pos_weight,
         **tuning_metadata,
+        **evaluation_metadata,
     }
     metadata_path = output_dir / "training_metadata.json"
     with metadata_path.open("w", encoding="utf-8") as handle:
@@ -277,6 +304,9 @@ def log_mlflow_outputs(
     features: list[str],
     tuning_summary: dict[str, float] | None,
     tuning_best_params: dict[str, object] | None,
+    evaluation_metrics: dict[str, object] | None,
+    optimal_threshold: float | None,
+    evaluation_artifacts: list[Path],
 ) -> tuple[str, str]:
     active_run = mlflow.active_run()
     if active_run is None:
@@ -325,25 +355,28 @@ def log_mlflow_outputs(
         )
         mlflow.log_params({f"best_{key}": value for key, value in tuning_best_params.items()})
 
+    if evaluation_metrics is not None:
+        flattened = {
+            f"test_{key}": value
+            for key, value in evaluation_metrics.items()
+            if not isinstance(value, dict)
+        }
+        nested_confusion = evaluation_metrics.get("confusion_matrix")
+        if isinstance(nested_confusion, dict):
+            for key, value in nested_confusion.items():
+                flattened[f"test_confusion_{key}"] = value
+        mlflow.log_metrics(flattened)
+        if optimal_threshold is not None:
+            mlflow.log_metrics({"optimal_threshold": float(optimal_threshold)})
+        for artifact_path in evaluation_artifacts:
+            mlflow.log_artifact(str(artifact_path))
+
     update_metadata_with_mlflow(
         output_dir / "training_metadata.json",
         active_run.info.run_id,
         mlflow.get_experiment(active_run.info.experiment_id).name,
     )
     mlflow.log_artifacts(str(output_dir))
-
-    signature = infer_signature(X_val, model.predict(X_val))
-    input_example = X_val.head(5)
-    model_name = config.model_settings.model_name
-    if not hasattr(model, "_estimator_type"):
-        model._estimator_type = "classifier"
-    mlflow.xgboost.log_model(
-        xgb_model=model,
-        artifact_path="model",
-        registered_model_name=model_name,
-        signature=signature,
-        input_example=input_example,
-    )
 
     return active_run.info.run_id, active_run.info.experiment_id
 
@@ -392,6 +425,10 @@ def main() -> None:
         "tuning_n_trials": 0,
         "tuning_best_params": None,
         "tuning_best_pr_auc_val": None,
+    }
+    evaluation_metadata: dict[str, object] = {
+        "evaluation_results": None,
+        "optimal_threshold": None,
     }
     tuning_summary: dict[str, float] | None = None
     tuning_best_params: dict[str, object] | None = None
@@ -448,6 +485,29 @@ def main() -> None:
         params,
     )
 
+    val_proba = model.predict_proba(X_val)[:, 1]
+    thresholds = np.round(np.arange(0.1, 0.91, 0.01), 2)
+    optimal_threshold, threshold_metrics = find_optimal_threshold(
+        y_val.to_numpy(),
+        val_proba,
+        thresholds,
+    )
+    if args.threshold is not None:
+        optimal_threshold = float(args.threshold)
+
+    test_metrics = evaluate_model(
+        model,
+        X_test,
+        y_test,
+        threshold=optimal_threshold,
+        cost_false_negative=args.cost_fn,
+        cost_false_positive=args.cost_fp,
+    )
+    evaluation_metadata = {
+        "evaluation_results": test_metrics,
+        "optimal_threshold": optimal_threshold,
+    }
+
     model_path = output_dir / "xgboost_model.joblib"
     joblib.dump(model, model_path)
 
@@ -461,6 +521,42 @@ def main() -> None:
         "eval_metric": "aucpr",
         "early_stopping_rounds": 20,
     }
+    evaluation_results_path = output_dir / "evaluation_results.json"
+    with evaluation_results_path.open("w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "metrics": test_metrics,
+                "optimal_threshold": optimal_threshold,
+                "cost_false_negative": args.cost_fn,
+                "cost_false_positive": args.cost_fp,
+            },
+            handle,
+            indent=2,
+        )
+
+    confusion_path = output_dir / "confusion_matrix.png"
+    roc_path = output_dir / "roc_curve.png"
+    pr_path = output_dir / "pr_curve.png"
+    feature_importance_path = output_dir / "feature_importance.png"
+    threshold_path = output_dir / "threshold_analysis.png"
+
+    save_confusion_matrix_plot(test_metrics["confusion_matrix"], confusion_path)
+    save_roc_curve_plot(y_test.to_numpy(), model.predict_proba(X_test)[:, 1], roc_path)
+    save_pr_curve_plot(y_test.to_numpy(), model.predict_proba(X_test)[:, 1], pr_path)
+    save_feature_importance_plot(
+        model,
+        SELECTED_FEATURES,
+        feature_importance_path,
+    )
+    save_threshold_analysis_plot(threshold_metrics, optimal_threshold, threshold_path)
+    evaluation_artifacts = [
+        evaluation_results_path,
+        confusion_path,
+        roc_path,
+        pr_path,
+        feature_importance_path,
+        threshold_path,
+    ]
     save_metadata(
         output_dir=output_dir,
         df=df,
@@ -469,6 +565,7 @@ def main() -> None:
         scale_pos_weight=scale_pos_weight,
         split_sizes=split_sizes,
         tuning_metadata=tuning_metadata,
+        evaluation_metadata=evaluation_metadata,
     )
     if mlflow_run is not None:
         try:
@@ -486,6 +583,9 @@ def main() -> None:
                 features=SELECTED_FEATURES,
                 tuning_summary=tuning_summary,
                 tuning_best_params=tuning_best_params,
+                evaluation_metrics=test_metrics,
+                optimal_threshold=optimal_threshold,
+                evaluation_artifacts=evaluation_artifacts,
             )
             if tracking_uri is not None:
                 run_url = f"{tracking_uri}/#/experiments/{experiment_id}/runs/{run_id}"
@@ -494,6 +594,18 @@ def main() -> None:
         except Exception as exc:
             logger.warning("MLflow logging failed: %s", exc)
     log_summary(y_full, split_sizes, params, output_dir)
+    logger.info(
+        "Evaluation — F1: %.4f, PR-AUC: %.4f, ROC-AUC: %.4f",
+        test_metrics["f1_score"],
+        test_metrics["pr_auc"],
+        test_metrics["roc_auc"],
+    )
+    logger.info("Threshold used: %.2f", test_metrics["threshold"])
+    logger.info("Estimated total cost: %.2f", test_metrics["total_cost"])
+    logger.info(
+        "Fraud detected: %.2f%%",
+        test_metrics["fraud_detected_pct"] * 100,
+    )
     logger.info("Model saved: %s", model_path)
     logger.info("Encoder saved: %s", output_dir / "categorical_encoder.joblib")
     logger.info("Metadata saved: %s", output_dir / "training_metadata.json")
