@@ -27,6 +27,7 @@ from feature_engineering.offline.featurizer import TransactionFeaturizer
 from feature_engineering.offline.imbalance import compute_scale_pos_weight
 from feature_engineering.offline.selection import select_features
 from model.features import SELECTED_FEATURES
+from model.tuning import run_optuna_study
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,23 @@ def parse_args() -> argparse.Namespace:
         "--no-mlflow",
         action="store_true",
         help="Disable MLflow tracking.",
+    )
+    parser.add_argument(
+        "--tune",
+        action="store_true",
+        help="Run Optuna hyperparameter tuning.",
+    )
+    parser.add_argument(
+        "--n-trials",
+        type=int,
+        default=30,
+        help="Number of Optuna trials to run.",
+    )
+    parser.add_argument(
+        "--optuna-timeout",
+        type=int,
+        default=None,
+        help="Optional Optuna timeout in seconds.",
     )
     return parser.parse_args()
 
@@ -124,20 +142,17 @@ def train_model(
     y_val: pd.Series,
     scale_pos_weight: float,
     seed: int,
+    params: dict[str, object],
 ) -> XGBClassifier:
-    params = {
-        "n_estimators": 300,
-        "max_depth": 6,
-        "learning_rate": 0.05,
-        "min_child_weight": 5,
-        "subsample": 0.8,
-        "colsample_bytree": 0.8,
-        "eval_metric": "aucpr",
-        "scale_pos_weight": scale_pos_weight,
-        "random_state": seed,
-        "early_stopping_rounds": 20,
-    }
-    model = XGBClassifier(**params)
+    model = XGBClassifier(
+        **{
+            **params,
+            "eval_metric": "aucpr",
+            "scale_pos_weight": scale_pos_weight,
+            "random_state": seed,
+            "early_stopping_rounds": 20,
+        }
+    )
     model.fit(
         X_train,
         y_train,
@@ -154,6 +169,7 @@ def save_metadata(
     params: dict[str, object],
     scale_pos_weight: float,
     split_sizes: dict[str, int],
+    tuning_metadata: dict[str, object],
 ) -> Path:
     ts_min = pd.to_datetime(df["timestamp"]).min()
     ts_max = pd.to_datetime(df["timestamp"]).max()
@@ -165,6 +181,7 @@ def save_metadata(
         "features": features,
         "hyperparameters": params,
         "scale_pos_weight": scale_pos_weight,
+        **tuning_metadata,
     }
     metadata_path = output_dir / "training_metadata.json"
     with metadata_path.open("w", encoding="utf-8") as handle:
@@ -258,6 +275,8 @@ def log_mlflow_outputs(
     training_data_from: str,
     training_data_to: str,
     features: list[str],
+    tuning_summary: dict[str, float] | None,
+    tuning_best_params: dict[str, object] | None,
 ) -> tuple[str, str]:
     active_run = mlflow.active_run()
     if active_run is None:
@@ -296,6 +315,16 @@ def log_mlflow_outputs(
         }
     )
 
+    if tuning_summary is not None and tuning_best_params is not None:
+        mlflow.log_metrics(
+            {
+                "tuning_best_pr_auc_val": tuning_summary["best_pr_auc_val"],
+                "tuning_n_trials": float(tuning_summary["n_trials"]),
+                "tuning_best_trial": float(tuning_summary["best_trial"]),
+            }
+        )
+        mlflow.log_params({f"best_{key}": value for key, value in tuning_best_params.items()})
+
     update_metadata_with_mlflow(
         output_dir / "training_metadata.json",
         active_run.info.run_id,
@@ -324,6 +353,14 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     np.random.seed(args.seed)
 
+    if args.tune:
+        try:
+            import optuna  # noqa: F401
+        except ImportError as exc:
+            raise SystemExit(
+                "Optuna is required for --tune. Install with: uv sync --group model"
+            ) from exc
+
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -350,7 +387,66 @@ def main() -> None:
         raise RuntimeError("Insufficient data for train/validation/test split.")
 
     scale_pos_weight = compute_scale_pos_weight(y_train)
-    model = train_model(X_train, y_train, X_val, y_val, scale_pos_weight, args.seed)
+    tuning_metadata: dict[str, object] = {
+        "tuning_enabled": False,
+        "tuning_n_trials": 0,
+        "tuning_best_params": None,
+        "tuning_best_pr_auc_val": None,
+    }
+    tuning_summary: dict[str, float] | None = None
+    tuning_best_params: dict[str, object] | None = None
+    params = {
+        "n_estimators": 300,
+        "max_depth": 6,
+        "learning_rate": 0.05,
+        "min_child_weight": 5,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+    }
+    if args.tune:
+        tuning_summary = {}
+        tuning_best_params = run_optuna_study(
+            X_train=X_train,
+            y_train=y_train,
+            X_val=X_val,
+            y_val=y_val,
+            scale_pos_weight=scale_pos_weight,
+            n_trials=args.n_trials,
+            seed=args.seed,
+            timeout=args.optuna_timeout,
+            mlflow_enabled=mlflow_run is not None,
+            tuning_summary=tuning_summary,
+        )
+        params = {
+            "n_estimators": int(tuning_best_params["n_estimators"]),
+            "max_depth": int(tuning_best_params["max_depth"]),
+            "learning_rate": float(tuning_best_params["learning_rate"]),
+            "min_child_weight": int(tuning_best_params["min_child_weight"]),
+            "subsample": float(tuning_best_params["subsample"]),
+            "colsample_bytree": float(tuning_best_params["colsample_bytree"]),
+            "gamma": float(tuning_best_params["gamma"]),
+            "reg_alpha": float(tuning_best_params["reg_alpha"]),
+            "reg_lambda": float(tuning_best_params["reg_lambda"]),
+        }
+        tuning_metadata = {
+            "tuning_enabled": True,
+            "tuning_n_trials": int(tuning_summary["n_trials"]),
+            "tuning_best_params": tuning_best_params,
+            "tuning_best_pr_auc_val": float(tuning_summary["best_pr_auc_val"]),
+        }
+        logger.info("Optuna best trial: %s", int(tuning_summary["best_trial"]))
+        logger.info("Optuna best params: %s", tuning_best_params)
+        logger.info("Optuna best PR-AUC: %.6f", tuning_summary["best_pr_auc_val"])
+
+    model = train_model(
+        X_train,
+        y_train,
+        X_val,
+        y_val,
+        scale_pos_weight,
+        args.seed,
+        params,
+    )
 
     model_path = output_dir / "xgboost_model.joblib"
     joblib.dump(model, model_path)
@@ -361,12 +457,7 @@ def main() -> None:
         "test": int(len(X_test)),
     }
     params = {
-        "n_estimators": 300,
-        "max_depth": 6,
-        "learning_rate": 0.05,
-        "min_child_weight": 5,
-        "subsample": 0.8,
-        "colsample_bytree": 0.8,
+        **params,
         "eval_metric": "aucpr",
         "early_stopping_rounds": 20,
     }
@@ -377,6 +468,7 @@ def main() -> None:
         params=params,
         scale_pos_weight=scale_pos_weight,
         split_sizes=split_sizes,
+        tuning_metadata=tuning_metadata,
     )
     if mlflow_run is not None:
         try:
@@ -392,6 +484,8 @@ def main() -> None:
                 training_data_from=training_data_from,
                 training_data_to=training_data_to,
                 features=SELECTED_FEATURES,
+                tuning_summary=tuning_summary,
+                tuning_best_params=tuning_best_params,
             )
             if tracking_uri is not None:
                 run_url = f"{tracking_uri}/#/experiments/{experiment_id}/runs/{run_id}"
