@@ -46,10 +46,18 @@ def find_optimal_threshold(
     y_true: np.ndarray,
     proba: np.ndarray,
     thresholds: np.ndarray,
+    *,
+    cost_false_negative: float = 100.0,
+    cost_false_positive: float = 5.0,
 ) -> tuple[float, dict[str, list[float]]]:
     metrics = compute_threshold_metrics(y_true, proba, thresholds)
-    f1_scores = np.array(metrics["f1"], dtype=float)
-    best_index = int(np.argmax(f1_scores))
+    costs = []
+    for threshold in thresholds:
+        preds = (proba >= threshold).astype(int)
+        fn = int(((y_true == 1) & (preds == 0)).sum())
+        fp = int(((y_true == 0) & (preds == 1)).sum())
+        costs.append(fn * cost_false_negative + fp * cost_false_positive)
+    best_index = int(np.argmin(costs))
     return float(metrics["thresholds"][best_index]), metrics
 
 

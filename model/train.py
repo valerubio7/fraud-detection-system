@@ -13,9 +13,12 @@ from urllib.parse import urlparse
 
 import joblib
 import mlflow
+import mlflow.xgboost
 import numpy as np
 import pandas as pd
 import psycopg2
+from mlflow.models import infer_signature
+from mlflow.tracking import MlflowClient
 from xgboost import XGBClassifier
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -169,11 +172,13 @@ def train_model(
     seed: int,
     params: dict[str, object],
 ) -> XGBClassifier:
+    effective_spw = float(params.get("scale_pos_weight", scale_pos_weight))
+    base_params = {k: v for k, v in params.items() if k != "scale_pos_weight"}
     model = XGBClassifier(
         **{
-            **params,
+            **base_params,
             "eval_metric": "aucpr",
-            "scale_pos_weight": scale_pos_weight,
+            "scale_pos_weight": effective_spw,
             "random_state": seed,
             "early_stopping_rounds": 20,
         }
@@ -272,22 +277,20 @@ def start_mlflow_run(
     disable_mlflow: bool,
 ) -> tuple[mlflow.ActiveRun | None, str | None, str | None]:
     if disable_mlflow:
-        return None, None, None
+        raise RuntimeError("MLflow tracking is required for model registration.")
 
     try:
         mlflow_settings = config.mlflow_settings
         tracking_uri = mlflow_settings.tracking_uri
         if not is_tracking_uri_available(tracking_uri):
-            logger.warning("MLflow tracking unavailable at %s", tracking_uri)
-            return None, None, None
+            raise RuntimeError(f"MLflow tracking unavailable at {tracking_uri}")
         mlflow.set_tracking_uri(tracking_uri)
         mlflow.set_experiment(mlflow_settings.experiment_name)
         run_name = f"train-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"
         run = mlflow.start_run(run_name=run_name)
         return run, tracking_uri, mlflow_settings.experiment_name
     except Exception as exc:
-        logger.warning("MLflow tracking unavailable: %s", exc)
-        return None, None, None
+        raise RuntimeError(f"MLflow tracking unavailable: {exc}") from exc
 
 
 def log_mlflow_outputs(
@@ -397,7 +400,10 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    mlflow_run, tracking_uri, _ = start_mlflow_run(args.no_mlflow)
+    try:
+        mlflow_run, tracking_uri, _ = start_mlflow_run(args.no_mlflow)
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
 
     df = load_transactions(args.limit)
     if df.empty:
@@ -464,6 +470,7 @@ def main() -> None:
             "gamma": float(tuning_best_params["gamma"]),
             "reg_alpha": float(tuning_best_params["reg_alpha"]),
             "reg_lambda": float(tuning_best_params["reg_lambda"]),
+            "scale_pos_weight": float(tuning_best_params["scale_pos_weight"]),
         }
         tuning_metadata = {
             "tuning_enabled": True,
@@ -491,6 +498,8 @@ def main() -> None:
         y_val.to_numpy(),
         val_proba,
         thresholds,
+        cost_false_negative=args.cost_fn,
+        cost_false_positive=args.cost_fp,
     )
     if args.threshold is not None:
         optimal_threshold = float(args.threshold)
@@ -557,42 +566,62 @@ def main() -> None:
         feature_importance_path,
         threshold_path,
     ]
+    effective_spw = float(params.get("scale_pos_weight", scale_pos_weight))
     save_metadata(
         output_dir=output_dir,
         df=df,
         features=SELECTED_FEATURES,
         params=params,
-        scale_pos_weight=scale_pos_weight,
+        scale_pos_weight=effective_spw,
         split_sizes=split_sizes,
         tuning_metadata=tuning_metadata,
         evaluation_metadata=evaluation_metadata,
     )
-    if mlflow_run is not None:
-        try:
-            run_id, experiment_id = log_mlflow_outputs(
-                model=model,
-                X_val=X_val,
-                y_train=y_train,
-                output_dir=output_dir,
-                params=params,
-                scale_pos_weight=scale_pos_weight,
-                seed=args.seed,
-                split_sizes=split_sizes,
-                training_data_from=training_data_from,
-                training_data_to=training_data_to,
-                features=SELECTED_FEATURES,
-                tuning_summary=tuning_summary,
-                tuning_best_params=tuning_best_params,
-                evaluation_metrics=test_metrics,
-                optimal_threshold=optimal_threshold,
-                evaluation_artifacts=evaluation_artifacts,
-            )
-            if tracking_uri is not None:
-                run_url = f"{tracking_uri}/#/experiments/{experiment_id}/runs/{run_id}"
-                print(f"MLflow run_id: {run_id}")
-                print(f"MLflow run URL: {run_url}")
-        except Exception as exc:
-            logger.warning("MLflow logging failed: %s", exc)
+    try:
+        run_id, experiment_id = log_mlflow_outputs(
+            model=model,
+            X_val=X_val,
+            y_train=y_train,
+            output_dir=output_dir,
+            params=params,
+            scale_pos_weight=effective_spw,
+            seed=args.seed,
+            split_sizes=split_sizes,
+            training_data_from=training_data_from,
+            training_data_to=training_data_to,
+            features=SELECTED_FEATURES,
+            tuning_summary=tuning_summary,
+            tuning_best_params=tuning_best_params,
+            evaluation_metrics=test_metrics,
+            optimal_threshold=optimal_threshold,
+            evaluation_artifacts=evaluation_artifacts,
+        )
+        signature = infer_signature(X_train, model.predict(X_train))
+        model_name = config.model_settings.model_name
+        if not hasattr(model, "_estimator_type"):
+            model._estimator_type = "classifier"
+        model_info = mlflow.xgboost.log_model(
+            xgb_model=model,
+            artifact_path="model",
+            registered_model_name=model_name,
+            signature=signature,
+            input_example=X_train.head(5),
+        )
+
+        client = MlflowClient()
+        if model_info.registered_model_version is None:
+            raise SystemExit("Failed to register model in MLflow Registry.")
+        client.transition_model_version_stage(
+            name=model_name,
+            version=model_info.registered_model_version,
+            stage="Staging",
+        )
+        if tracking_uri is not None:
+            run_url = f"{tracking_uri}/#/experiments/{experiment_id}/runs/{run_id}"
+            print(f"MLflow run_id: {run_id}")
+            print(f"MLflow run URL: {run_url}")
+    except Exception as exc:
+        raise SystemExit(f"MLflow logging failed: {exc}") from exc
     log_summary(y_full, split_sizes, params, output_dir)
     logger.info(
         "Evaluation — F1: %.4f, PR-AUC: %.4f, ROC-AUC: %.4f",
@@ -610,11 +639,10 @@ def main() -> None:
     logger.info("Encoder saved: %s", output_dir / "categorical_encoder.joblib")
     logger.info("Metadata saved: %s", output_dir / "training_metadata.json")
 
-    if mlflow_run is not None:
-        try:
-            mlflow.end_run()
-        except Exception as exc:
-            logger.warning("Failed to finalize MLflow run: %s", exc)
+    try:
+        mlflow.end_run()
+    except Exception as exc:
+        logger.warning("Failed to finalize MLflow run: %s", exc)
 
 
 if __name__ == "__main__":

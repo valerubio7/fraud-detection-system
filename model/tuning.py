@@ -78,8 +78,12 @@ def build_optuna_objective(
             "gamma": trial.suggest_float("gamma", 0.0, 5.0),
             "reg_alpha": trial.suggest_float("reg_alpha", 1e-4, 10.0, log=True),
             "reg_lambda": trial.suggest_float("reg_lambda", 1e-4, 10.0, log=True),
+            "scale_pos_weight": trial.suggest_float(
+                "scale_pos_weight",
+                scale_pos_weight * 0.5,
+                scale_pos_weight * 2.0,
+            ),
             "eval_metric": "aucpr",
-            "scale_pos_weight": scale_pos_weight,
             "random_state": seed,
             "early_stopping_rounds": 20,
         }
