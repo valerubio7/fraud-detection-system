@@ -43,6 +43,7 @@ from model.features import SELECTED_FEATURES  # noqa: E402
 MIN_F1 = 0.85
 MIN_AUC_ROC = 0.90
 MAX_LATENCY_P99_MS = 50.0
+MIN_F1_IMPROVEMENT = 0.02
 
 
 def compute_threshold_metrics(
@@ -283,7 +284,7 @@ class GateResult:
     passed: bool
 
 
-def load_test_data() -> pd.DataFrame:
+def _load_test_data() -> pd.DataFrame:
     """Load the last 20% temporal split of labeled transactions from TimescaleDB."""
     settings = config.timescaledb_settings
     conn = psycopg2.connect(
@@ -314,12 +315,12 @@ def load_test_data() -> pd.DataFrame:
     return test_df
 
 
-def load_model(model_name: str, model_version: str):
-    """Load an XGBoost model from MLflow Model Registry."""
-    mlflow_settings = config.mlflow_settings
-    mlflow.set_tracking_uri(mlflow_settings.tracking_uri)
-    uri = f"models:/{model_name}/{model_version}"
+def _load_model_from_uri(uri: str):
+    """Load an XGBoost model from an arbitrary MLflow model URI.
 
+    Handles the XGBoost class patching needed for models saved without
+    ``_estimator_type`` and ``n_classes_`` attributes.
+    """
     import xgboost as xgb
 
     saved = getattr(xgb.XGBModel, "_estimator_type", None)
@@ -337,6 +338,37 @@ def load_model(model_name: str, model_version: str):
     if not hasattr(model, "n_classes_"):
         model.n_classes_ = 2
     return model
+
+
+def load_model(model_name: str, model_version: str):
+    """Load a model version from MLflow Model Registry by name and version."""
+    mlflow_settings = config.mlflow_settings
+    mlflow.set_tracking_uri(mlflow_settings.tracking_uri)
+    uri = f"models:/{model_name}/{model_version}"
+    return _load_model_from_uri(uri)
+
+
+def load_champion_model(model_name: str):
+    """Load the champion model from the ``Production`` stage.
+
+    Returns ``None`` if no model version is in Production.
+    Raises ``RuntimeError`` if a Production version exists but fails to load.
+    """
+    mlflow_settings = config.mlflow_settings
+    mlflow.set_tracking_uri(mlflow_settings.tracking_uri)
+
+    client = MlflowClient()
+    versions = client.get_latest_versions(model_name, stages=["Production"])
+    if not versions:
+        return None
+
+    uri = f"models:/{model_name}/Production"
+    try:
+        return _load_model_from_uri(uri)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Champion model exists in Production stage but failed to load: {exc}"
+        ) from exc
 
 
 def compute_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -373,7 +405,7 @@ def run_quality_gates(model_name: str, model_version: str) -> GateResult:
     model = load_model(model_name, model_version)
 
     print("Loading test data from TimescaleDB...")
-    test_df = load_test_data()
+    test_df = _load_test_data()
     y_test = test_df["is_fraud"].astype(int)
     print(f"Test set size: {len(test_df)} transactions")
 
@@ -456,10 +488,141 @@ def _print_summary(result: GateResult) -> None:
     print("=" * 50)
 
 
+# ---------------------------------------------------------------------------
+# Challenger vs champion comparison
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ChampionComparisonResult:
+    """Result of comparing a challenger model against the Production champion."""
+
+    challenger_f1: float
+    challenger_auc_roc: float
+    champion_f1: float | None
+    champion_auc_roc: float | None
+    f1_difference: float | None
+    challenger_wins: bool
+    reason: str
+
+
+def compare_challenger_vs_champion(
+    challenger_name: str, challenger_version: str
+) -> ChampionComparisonResult:
+    """Compare the challenger model against the champion in Production.
+
+    Args:
+        challenger_name: Model name in MLflow Model Registry.
+        challenger_version: Version number of the challenger.
+
+    Returns:
+        ChampionComparisonResult with metrics, verdict and reason.
+    """
+    print("Loading champion model from Production stage...")
+    champion_model = load_champion_model(challenger_name)
+
+    if champion_model is None:
+        result = ChampionComparisonResult(
+            challenger_f1=0.0,
+            challenger_auc_roc=0.0,
+            champion_f1=None,
+            champion_auc_roc=None,
+            f1_difference=None,
+            challenger_wins=True,
+            reason="No champion model in Production stage — challenger wins by default",
+        )
+        _print_comparison_summary(result)
+        return result
+
+    print("Loading challenger model...")
+    challenger = load_model(challenger_name, challenger_version)
+
+    print("Loading test data for comparison...")
+    test_df = _load_test_data()
+    y_test = test_df["is_fraud"].astype(int)
+    print(f"Test set size: {len(test_df)} transactions")
+
+    print("Computing features...")
+    X_test = compute_features(test_df)
+
+    challenger_proba = challenger.predict_proba(X_test)[:, 1]
+    challenger_preds = (challenger_proba >= 0.5).astype(int)
+    challenger_f1 = float(f1_score(y_test, challenger_preds, zero_division=0))
+    challenger_auc = float(roc_auc_score(y_test, challenger_proba))
+
+    champion_proba = champion_model.predict_proba(X_test)[:, 1]
+    champion_preds = (champion_proba >= 0.5).astype(int)
+    champion_f1 = float(f1_score(y_test, champion_preds, zero_division=0))
+    champion_auc = float(roc_auc_score(y_test, champion_proba))
+
+    f1_diff = challenger_f1 - champion_f1
+    challenger_wins = challenger_f1 > champion_f1 + MIN_F1_IMPROVEMENT
+
+    if challenger_wins:
+        reason = (
+            f"Challenger F1 ({challenger_f1:.4f}) exceeds champion F1 ({champion_f1:.4f}) "
+            f"by more than {MIN_F1_IMPROVEMENT:.2f} (diff: {f1_diff:+.4f})"
+        )
+    else:
+        reason = (
+            f"Challenger F1 ({challenger_f1:.4f}) does not exceed champion F1 "
+            f"({champion_f1:.4f}) by at least {MIN_F1_IMPROVEMENT:.2f} (diff: {f1_diff:+.4f})"
+        )
+
+    result = ChampionComparisonResult(
+        challenger_f1=challenger_f1,
+        challenger_auc_roc=challenger_auc,
+        champion_f1=champion_f1,
+        champion_auc_roc=champion_auc,
+        f1_difference=f1_diff,
+        challenger_wins=challenger_wins,
+        reason=reason,
+    )
+
+    _print_comparison_summary(result)
+    return result
+
+
+def _print_comparison_summary(result: ChampionComparisonResult) -> None:
+    """Print a clear side-by-side comparison of challenger vs champion."""
+    print()
+    print("=" * 50)
+    print("CHALLENGER vs CHAMPION COMPARISON")
+    print("=" * 50)
+
+    if result.champion_f1 is None:
+        print("  No champion model in Production stage.")
+        print("  Challenger wins by default.")
+        print("=" * 50)
+        return
+
+    print(f"  {'Metric':<22} {'Challenger':>10} {'Champion':>10} {'Diff':>10}")
+    print(f"  {'------':<22} {'----------':>10} {'----------':>10} {'------':>10}")
+    print(
+        f"  {'F1-score (fraud)':<22} {result.challenger_f1:>10.4f} "
+        f"{result.champion_f1:>10.4f} {result.f1_difference:>+10.4f}"
+    )
+    print(
+        f"  {'AUC-ROC':<22} {result.challenger_auc_roc:>10.4f} "
+        f"{result.champion_auc_roc:>10.4f} {'':>10}"
+    )
+    print("-" * 50)
+    print(f"  {'Verdict:':<22} {'WIN' if result.challenger_wins else 'LOSE'}")
+    print(f"  Reason: {result.reason}")
+    print("=" * 50)
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Evaluate model quality gates.")
+    parser = argparse.ArgumentParser(
+        description="Evaluate quality gates and compare challenger vs champion."
+    )
     parser.add_argument("--model-name", required=True, help="MLflow Model Registry name.")
     parser.add_argument("--model-version", required=True, help="Model version number.")
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="Compare the model against the Production champion after quality gates.",
+    )
     return parser.parse_args()
 
 
@@ -468,6 +631,13 @@ def main() -> None:
     result = run_quality_gates(args.model_name, args.model_version)
     if not result.passed:
         sys.exit(1)
+
+    if args.compare:
+        comparison = compare_challenger_vs_champion(args.model_name, args.model_version)
+        if not comparison.challenger_wins:
+            print(f"\nChallenger rejected: {comparison.reason}")
+            sys.exit(1)
+        print("\nChallenger passed all checks — ready for promotion.")
 
 
 if __name__ == "__main__":
