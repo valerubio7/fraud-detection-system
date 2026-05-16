@@ -14,6 +14,7 @@ COPY pyproject.toml uv.lock ./
 
 RUN uv sync --frozen --no-dev --no-install-project --group serving
 
+COPY config.py ./
 COPY serving ./serving
 
 RUN groupadd --system app && useradd --system --gid app --create-home app && chown -R app:app /app
