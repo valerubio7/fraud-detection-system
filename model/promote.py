@@ -1,5 +1,3 @@
-"""Promote a model version to Production in MLflow Registry and record the deployment."""
-
 from __future__ import annotations
 
 import argparse
@@ -18,8 +16,6 @@ import config  # noqa: E402
 
 @dataclass
 class PromotionResult:
-    """Result of a model promotion to Production."""
-
     model_deployment_id: int
     mlflow_run_id: str
     model_version: str
@@ -28,19 +24,47 @@ class PromotionResult:
 
 
 def promote_to_production(model_name: str, model_version: str) -> PromotionResult:
-    """Promote a model version from Staging to Production.
-
-    Args:
-        model_name: Name of the model in MLflow Model Registry.
-        model_version: Version number to promote.
-
-    Returns:
-        PromotionResult with deployment details.
-    """
+    """Promote a model version from Staging to Production."""
     mlflow_settings = config.mlflow_settings
     client = MlflowClient(tracking_uri=mlflow_settings.tracking_uri)
 
-    # Step 1 — verify model exists and is in Staging
+    mv, run_id = _verify_staging_version(client, model_name, model_version)
+    run_metrics, run_params, run_start = _fetch_run_metadata(client, run_id)
+
+    promoted_at = datetime.now(UTC)
+    training_data_from = _parse_timestamp_with_fallback(
+        run_params.get("training_data_from"), run_start
+    )
+    training_data_to = _parse_timestamp_with_fallback(
+        run_params.get("training_data_to"), promoted_at
+    )
+
+    deployment_id = _record_deployment_in_db(
+        run_id=run_id,
+        model_name=model_name,
+        model_version=model_version,
+        promoted_at=promoted_at,
+        metrics=run_metrics,
+        training_data_from=training_data_from,
+        training_data_to=training_data_to,
+    )
+
+    _transition_mlflow_stage(client, model_name, model_version)
+
+    result = PromotionResult(
+        model_deployment_id=deployment_id,
+        mlflow_run_id=run_id,
+        model_version=model_version,
+        stage="Production",
+        promoted_at=promoted_at.isoformat(),
+    )
+    _print_promotion_summary(model_name, run_id, deployment_id, promoted_at, run_metrics, result)
+    return result
+
+
+def _verify_staging_version(
+    client: MlflowClient, model_name: str, model_version: str
+) -> tuple[object, str]:
     print(f"Checking model {model_name} version {model_version} in MLflow...")
     try:
         mv = client.get_model_version(model_name, model_version)
@@ -55,48 +79,32 @@ def promote_to_production(model_name: str, model_version: str) -> PromotionResul
         )
         sys.exit(1)
 
-    run_id = mv.run_id
+    return mv, mv.run_id
+
+
+def _fetch_run_metadata(client: MlflowClient, run_id: str) -> tuple[dict, dict, datetime]:
     print(f"Fetching run {run_id} metadata from MLflow...")
     run = client.get_run(run_id)
-    metrics = run.data.metrics
-    params_dict = run.data.params
-
-    f1_score = metrics.get("f1_score")
-    precision = metrics.get("precision")
-    recall = metrics.get("recall")
-    auc_roc = metrics.get("auc_roc")
-
-    raw_from = params_dict.get("training_data_from")
-    raw_to = params_dict.get("training_data_to")
-
     run_start = datetime.fromtimestamp(run.info.start_time / 1000.0, tz=UTC)
-    promoted_at = datetime.now(UTC)
+    return run.data.metrics, run.data.params, run_start
 
-    def _parse_ts(raw: str | None, fallback: datetime) -> datetime:
-        if not raw:
-            return fallback
-        try:
-            return datetime.fromisoformat(raw)
-        except (ValueError, TypeError):
-            return fallback
 
-    training_data_from = _parse_ts(raw_from, run_start)
-    training_data_to = _parse_ts(raw_to, promoted_at)
-
-    # Step 2-3 — PostgreSQL transaction (insert + activate)
-    postgres_settings = config.postgres_settings
-    conn = psycopg2.connect(
-        host=postgres_settings.host,
-        port=postgres_settings.port,
-        user=postgres_settings.user,
-        password=postgres_settings.password,
-        dbname=postgres_settings.db,
-    )
+def _record_deployment_in_db(
+    *,
+    run_id: str,
+    model_name: str,
+    model_version: str,
+    promoted_at: datetime,
+    metrics: dict,
+    training_data_from: datetime,
+    training_data_to: datetime,
+) -> int:
+    s = config.postgres_settings
+    conn = psycopg2.connect(host=s.host, port=s.port, user=s.user, password=s.password, dbname=s.db)
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id FROM public.model_deployments WHERE mlflow_run_id = %s",
-                (run_id,),
+                "SELECT id FROM public.model_deployments WHERE mlflow_run_id = %s", (run_id,)
             )
             row = cur.fetchone()
 
@@ -113,9 +121,7 @@ def promote_to_production(model_name: str, model_version: str) -> PromotionResul
                         (model_name, version, mlflow_run_id, created_at, is_active,
                          f1_score, precision, recall, auc_roc,
                          training_data_from, training_data_to)
-                    VALUES (%s, %s, %s, %s, FALSE,
-                            %s, %s, %s, %s,
-                            %s, %s)
+                    VALUES (%s, %s, %s, %s, FALSE, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
                     (
@@ -123,10 +129,10 @@ def promote_to_production(model_name: str, model_version: str) -> PromotionResul
                         model_version,
                         run_id,
                         promoted_at,
-                        f1_score,
-                        precision,
-                        recall,
-                        auc_roc,
+                        metrics.get("f1_score"),
+                        metrics.get("precision"),
+                        metrics.get("recall"),
+                        metrics.get("auc_roc"),
                         training_data_from,
                         training_data_to,
                     ),
@@ -146,9 +152,12 @@ def promote_to_production(model_name: str, model_version: str) -> PromotionResul
     finally:
         conn.close()
 
-    # Step 4 — Transition MLflow stage (only after DB transaction succeeded)
+    return deployment_id
+
+
+def _transition_mlflow_stage(client: MlflowClient, model_name: str, model_version: str) -> None:
+    print(f"Transitioning {model_name} v{model_version} to Production...")
     try:
-        print(f"Transitioning {model_name} v{model_version} to Production...")
         client.transition_model_version_stage(
             name=model_name,
             version=model_version,
@@ -160,30 +169,37 @@ def promote_to_production(model_name: str, model_version: str) -> PromotionResul
         print(f"Error: MLflow stage transition failed: {exc}")
         sys.exit(1)
 
-    result = PromotionResult(
-        model_deployment_id=deployment_id,
-        mlflow_run_id=run_id,
-        model_version=model_version,
-        stage="Production",
-        promoted_at=promoted_at.isoformat(),
-    )
 
-    # Step 5 — Print summary
+def _print_promotion_summary(
+    model_name: str,
+    run_id: str,
+    deployment_id: int,
+    promoted_at: datetime,
+    metrics: dict,
+    result: PromotionResult,
+) -> None:
     print()
     print("=" * 50)
     print("MODEL PROMOTION REPORT")
     print("=" * 50)
     print(f"  Model:              {model_name}")
-    print(f"  Version:            {model_version}")
+    print(f"  Version:            {result.model_version}")
     print("  Stage:              Production")
     print(f"  MLflow Run ID:      {run_id}")
     print(f"  Deployment DB ID:   {deployment_id}")
     print(f"  Promoted at:        {promoted_at.isoformat()}")
-    print(f"  F1-score:           {f1_score if f1_score is not None else 'N/A'}")
-    print(f"  AUC-ROC:            {auc_roc if auc_roc is not None else 'N/A'}")
+    print(f"  F1-score:           {metrics.get('f1_score', 'N/A')}")
+    print(f"  AUC-ROC:            {metrics.get('auc_roc', 'N/A')}")
     print("=" * 50)
 
-    return result
+
+def _parse_timestamp_with_fallback(raw: str | None, fallback: datetime) -> datetime:
+    if not raw:
+        return fallback
+    try:
+        return datetime.fromisoformat(raw)
+    except (ValueError, TypeError):
+        return fallback
 
 
 def parse_args() -> argparse.Namespace:

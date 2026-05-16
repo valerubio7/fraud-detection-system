@@ -27,16 +27,15 @@ import config
 from feature_engineering.offline.featurizer import TransactionFeaturizer
 from feature_engineering.offline.imbalance import compute_scale_pos_weight
 from feature_engineering.offline.selection import select_features
-from model.evaluate import (
-    evaluate_model,
-    find_optimal_threshold,
+from model.metrics import evaluate_model, find_optimal_threshold
+from model.plots import (
     save_confusion_matrix_plot,
     save_feature_importance_plot,
     save_pr_curve_plot,
     save_roc_curve_plot,
     save_threshold_analysis_plot,
 )
-from model.features import SELECTED_FEATURES
+from model.selected_features import SELECTED_FEATURES
 from model.tuning import run_optuna_study
 
 logger = logging.getLogger(__name__)
@@ -141,7 +140,7 @@ def build_features(
     selected = featurizer.get_feature_names()
     if selected != SELECTED_FEATURES:
         raise RuntimeError(
-            "Selected features do not match model/features.py. "
+            "Selected features do not match model/selected_features.py. "
             "Run feature selection on the seed dataset and update SELECTED_FEATURES."
         )
     X_full = featurizer.transform(df)
