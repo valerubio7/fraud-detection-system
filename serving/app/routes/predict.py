@@ -3,7 +3,7 @@ import logging
 import time
 
 import numpy as np
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, BackgroundTasks, Request
 
 import config
 
@@ -19,7 +19,9 @@ _log = logging.getLogger(__name__)
 
 
 @router.post("/predict", response_model=PredictionResponse)
-def predict(req: TransactionRequest, request: Request) -> PredictionResponse:
+async def predict(
+    req: TransactionRequest, request: Request, background_tasks: BackgroundTasks
+) -> PredictionResponse:
     model_loader = request.app.state.model_loader
     prediction_store = request.app.state.prediction_store
     cache = request.app.state.prediction_cache
@@ -45,21 +47,19 @@ def predict(req: TransactionRequest, request: Request) -> PredictionResponse:
     inference_ms = (time.perf_counter() - t1) * 1000
 
     prediction_label = prediction_score >= config.model_settings.fraud_score_threshold
+    latency_ms = feature_ms + inference_ms
 
-    t2 = time.perf_counter()
-    prediction_store.save(
-        req.transaction_id, prediction_score, prediction_label, feature_ms + inference_ms
+    background_tasks.add_task(
+        prediction_store.save, req.transaction_id, prediction_score, prediction_label, latency_ms
     )
-    db_ms = (time.perf_counter() - t2) * 1000
 
-    total_ms = feature_ms + inference_ms + db_ms
+    total_ms = latency_ms
     threshold = config.model_settings.slow_request_threshold_ms
     log_payload = {
         "event": "predict",
         "transaction_id": req.transaction_id,
         "feature_ms": round(feature_ms, 3),
         "inference_ms": round(inference_ms, 3),
-        "db_ms": round(db_ms, 3),
         "total_ms": round(total_ms, 3),
     }
     if total_ms > threshold:
@@ -73,14 +73,16 @@ def predict(req: TransactionRequest, request: Request) -> PredictionResponse:
         prediction_score=prediction_score,
         prediction_label=prediction_label,
         model_version=model_loader.model_version,
-        latency_ms=feature_ms + inference_ms,
+        latency_ms=latency_ms,
     )
     cache.set(req.transaction_id, response.model_dump())
     return response
 
 
 @router.post("/predict/batch", response_model=BatchPredictionResponse)
-def predict_batch(req: BatchPredictionRequest, request: Request) -> BatchPredictionResponse:
+async def predict_batch(
+    req: BatchPredictionRequest, request: Request, background_tasks: BackgroundTasks
+) -> BatchPredictionResponse:
     model_loader = request.app.state.model_loader
     prediction_store = request.app.state.prediction_store
     threshold_score = config.model_settings.fraud_score_threshold
@@ -106,11 +108,12 @@ def predict_batch(req: BatchPredictionRequest, request: Request) -> BatchPredict
 
     per_item_latency_ms = (feature_ms + inference_ms) / n
 
-    t2 = time.perf_counter()
     predictions = []
     for item, score in zip(req.items, scores, strict=False):
         label = float(score) >= threshold_score
-        prediction_store.save(item.transaction_id, float(score), label, per_item_latency_ms)
+        background_tasks.add_task(
+            prediction_store.save, item.transaction_id, float(score), label, per_item_latency_ms
+        )
         predictions.append(
             PredictionResponse(
                 transaction_id=item.transaction_id,
@@ -120,9 +123,8 @@ def predict_batch(req: BatchPredictionRequest, request: Request) -> BatchPredict
                 latency_ms=per_item_latency_ms,
             )
         )
-    db_ms = (time.perf_counter() - t2) * 1000
 
-    total_ms = feature_ms + inference_ms + db_ms
+    total_ms = feature_ms + inference_ms
     threshold_slow = config.model_settings.slow_request_threshold_ms
     log_payload = {
         "event": "predict_batch",
@@ -130,7 +132,6 @@ def predict_batch(req: BatchPredictionRequest, request: Request) -> BatchPredict
         "feature_ms": round(feature_ms, 3),
         "inference_ms": round(inference_ms, 3),
         "avg_inference_ms": round(inference_ms / n, 3),
-        "db_ms": round(db_ms, 3),
         "total_ms": round(total_ms, 3),
     }
     if total_ms > threshold_slow:
@@ -142,5 +143,5 @@ def predict_batch(req: BatchPredictionRequest, request: Request) -> BatchPredict
     return BatchPredictionResponse(
         predictions=predictions,
         total=len(predictions),
-        latency_ms=feature_ms + inference_ms,
+        latency_ms=total_ms,
     )

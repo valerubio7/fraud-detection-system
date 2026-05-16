@@ -3,57 +3,40 @@ from __future__ import annotations
 import logging
 import uuid
 
-import psycopg2
-import psycopg2.extras
-
-import config
+import asyncpg
 
 _log = logging.getLogger(__name__)
 
 _INSERT = """
 INSERT INTO public.predictions_history
     (transaction_id, model_version_id, prediction_score, prediction_label, latency_ms)
-VALUES (%s, %s, %s, %s, %s)
+VALUES ($1, $2, $3, $4, $5)
 """
 
 
 class PredictionStore:
-    def __init__(self, deployment_id: int) -> None:
+    def __init__(self, pool: asyncpg.Pool, deployment_id: int) -> None:
+        self._pool = pool
         self._deployment_id = deployment_id
 
-    def save(
+    async def save(
         self,
         transaction_id: str,
         prediction_score: float,
         prediction_label: bool,
         latency_ms: float,
     ) -> None:
-        pg = config.postgres_settings
-        conn = psycopg2.connect(
-            host=pg.host,
-            port=pg.port,
-            user=pg.user,
-            password=pg.password,
-            dbname=pg.db,
-        )
         try:
-            psycopg2.extras.register_uuid(conn)
-            with conn.cursor() as cur:
-                cur.execute(
+            async with self._pool.acquire() as conn:
+                await conn.execute(
                     _INSERT,
-                    (
-                        uuid.UUID(transaction_id),
-                        self._deployment_id,
-                        prediction_score,
-                        prediction_label,
-                        latency_ms,
-                    ),
+                    uuid.UUID(transaction_id),
+                    self._deployment_id,
+                    prediction_score,
+                    prediction_label,
+                    latency_ms,
                 )
-            conn.commit()
         except Exception:
-            conn.rollback()
             _log.error(
                 "Error persisting prediction for transaction %s", transaction_id, exc_info=True
             )
-        finally:
-            conn.close()
