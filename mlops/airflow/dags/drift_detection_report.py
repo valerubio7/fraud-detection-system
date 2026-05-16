@@ -10,8 +10,13 @@ from pathlib import Path
 import psycopg2
 from airflow.decorators import dag, task
 from airflow.exceptions import AirflowSkipException
+from airflow.models.xcom_arg import XComArg
 
 sys.path.insert(0, "/opt/airflow/project")
+
+from fraud_operators import EvidentlyReportOperator, TimescaleExtractOperator
+
+from model.selected_features import SELECTED_FEATURES
 
 DAG_ID = "drift_detection_report"
 DRIFT_ALERT_THRESHOLD = 0.3
@@ -19,13 +24,23 @@ ENCODER_ARTIFACT_PATH = "categorical_encoder.joblib"
 ENCODER_DST_DIR = "/tmp/drift_encoder"
 REFERENCE_PARQUET = "/tmp/drift_reference.parquet"
 PRODUCTION_PARQUET = "/tmp/drift_production.parquet"
-REFERENCE_LIMIT = 50_000
 MIN_PRODUCTION_ROWS = 100
 
-_TRANSACTION_SELECT = """
+_REFERENCE_SQL = """
     SELECT transaction_id, user_id, merchant_id, merchant_category,
            amount, country, device_type, ip_hash, timestamp, is_fraud
     FROM public.transactions
+    WHERE is_fraud IS NOT NULL
+    ORDER BY timestamp DESC
+    LIMIT 50000
+"""
+
+_PRODUCTION_SQL = """
+    SELECT transaction_id, user_id, merchant_id, merchant_category,
+           amount, country, device_type, ip_hash, timestamp, is_fraud
+    FROM public.transactions
+    WHERE timestamp >= NOW() - INTERVAL '24 hours'
+    ORDER BY timestamp
 """
 
 
@@ -33,13 +48,6 @@ def _pg_conn():
     import config
 
     s = config.postgres_settings
-    return psycopg2.connect(host=s.host, port=s.port, user=s.user, password=s.password, dbname=s.db)
-
-
-def _ts_conn():
-    import config
-
-    s = config.timescaledb_settings
     return psycopg2.connect(host=s.host, port=s.port, user=s.user, password=s.password, dbname=s.db)
 
 
@@ -90,102 +98,58 @@ def drift_detection_report() -> None:
             "mlflow_run_id": str(mlflow_run_id),
         }
 
+    # Extraction — raw transaction rows to Parquet (no featurization yet)
+    extract_reference = TimescaleExtractOperator(
+        task_id="fetch_reference_data",
+        sql=_REFERENCE_SQL,
+        output_path="/tmp/drift_raw_reference.parquet",
+    )
+
+    extract_production = TimescaleExtractOperator(
+        task_id="fetch_production_data",
+        sql=_PRODUCTION_SQL,
+        output_path="/tmp/drift_raw_production.parquet",
+    )
+
     @task
-    def fetch_reference_data(deployment: dict) -> str:
+    def featurize_reference(active: dict, raw_path: str) -> str:
         import pandas as pd
 
         from feature_engineering.offline.featurizer import TransactionFeaturizer
-        from model.selected_features import SELECTED_FEATURES
 
-        encoder_dir = _download_encoder(deployment["mlflow_run_id"])
+        encoder_dir = _download_encoder(active["mlflow_run_id"])
         featurizer = TransactionFeaturizer(encoders_dir=encoder_dir)
-
-        conn = _ts_conn()
-        try:
-            df = pd.read_sql(
-                _TRANSACTION_SELECT + "WHERE is_fraud IS NOT NULL ORDER BY timestamp DESC LIMIT %s",
-                conn,
-                params=(REFERENCE_LIMIT,),
-            )
-        finally:
-            conn.close()
-
-        df = df.sort_values("timestamp").reset_index(drop=True)
+        df = pd.read_parquet(raw_path).sort_values("timestamp").reset_index(drop=True)
         X = featurizer.transform(df)
         X[SELECTED_FEATURES].to_parquet(REFERENCE_PARQUET, index=False)
         return REFERENCE_PARQUET
 
     @task
-    def fetch_production_data() -> str:
+    def featurize_production(active: dict, raw_path: str) -> str:
         import pandas as pd
 
         from feature_engineering.offline.featurizer import TransactionFeaturizer
-        from model.selected_features import SELECTED_FEATURES
 
-        conn_pg = _pg_conn()
-        try:
-            with conn_pg.cursor() as cur:
-                cur.execute(
-                    "SELECT mlflow_run_id FROM public.model_deployments "
-                    "WHERE is_active = TRUE LIMIT 1"
-                )
-                row = cur.fetchone()
-        finally:
-            conn_pg.close()
-
-        if row is None:
-            raise AirflowSkipException("No active model deployment found")
-
-        encoder_dir = _download_encoder(row[0])
+        encoder_dir = _download_encoder(active["mlflow_run_id"])
         featurizer = TransactionFeaturizer(encoders_dir=encoder_dir)
-
-        conn_ts = _ts_conn()
-        try:
-            df = pd.read_sql(
-                _TRANSACTION_SELECT
-                + "WHERE timestamp >= NOW() - INTERVAL '24 hours' ORDER BY timestamp",
-                conn_ts,
-            )
-        finally:
-            conn_ts.close()
+        df = pd.read_parquet(raw_path).reset_index(drop=True)
 
         if len(df) < MIN_PRODUCTION_ROWS:
             raise AirflowSkipException(
                 f"Insufficient production data for drift analysis (<{MIN_PRODUCTION_ROWS} rows)"
             )
 
-        X = featurizer.transform(df.reset_index(drop=True))
+        X = featurizer.transform(df)
         X[SELECTED_FEATURES].to_parquet(PRODUCTION_PARQUET, index=False)
         return PRODUCTION_PARQUET
 
-    @task
-    def run_evidently_report(reference_path: str, production_path: str) -> dict:
-        import pandas as pd
-        from evidently.metric_preset import DataDriftPreset
-        from evidently.report import Report
-
-        reference_df = pd.read_parquet(reference_path)
-        current_df = pd.read_parquet(production_path)
-
-        report = Report(metrics=[DataDriftPreset()])
-        report.run(reference_data=reference_df, current_data=current_df)
-        metrics_result = report.as_dict()["metrics"][0]["result"]
-
-        drift_score = float(metrics_result["share_of_drifted_columns"])
-        dataset_drift = bool(metrics_result["dataset_drift"])
-        feature_drifts = {
-            feature: {
-                "drift_detected": bool(info["drift_detected"]),
-                "drift_score": float(info["drift_score"]),
-            }
-            for feature, info in metrics_result["drift_by_columns"].items()
-        }
-
-        return {
-            "drift_score": drift_score,
-            "feature_drifts": feature_drifts,
-            "dataset_drift": dataset_drift,
-        }
+    # Drift analysis — reads featurized Parquets via XCom from featurize tasks
+    run_drift = EvidentlyReportOperator(
+        task_id="run_evidently_report",
+        reference_path_xcom_task_id="featurize_reference",
+        current_path_xcom_task_id="featurize_production",
+        columns=SELECTED_FEATURES,
+    )
 
     @task
     def save_report_to_postgresql(deployment: dict, report: dict) -> None:
@@ -228,12 +192,23 @@ def drift_detection_report() -> None:
         finally:
             conn.close()
 
+    # --- Dependency wiring ---
     active = fetch_active_deployment()
-    ref = fetch_reference_data(active)
-    prod = fetch_production_data()
-    active >> prod  # prod no toma deployment como arg pero debe esperar a active
-    report = run_evidently_report(ref, prod)
-    save_report_to_postgresql(active, report)
+
+    # Extraction runs in parallel once the active deployment is known
+    active >> extract_reference
+    active >> extract_production
+
+    # Featurization applies the encoder from MLflow to the raw Parquets
+    ref_feat = featurize_reference(active, XComArg(extract_reference))
+    prod_feat = featurize_production(active, XComArg(extract_production))
+
+    # Drift report waits for both featurized datasets
+    ref_feat >> run_drift
+    prod_feat >> run_drift
+
+    # Persist results
+    save_report_to_postgresql(active, XComArg(run_drift))
 
 
 drift_detection_report()
