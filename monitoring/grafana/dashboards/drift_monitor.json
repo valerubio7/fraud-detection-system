@@ -1,6 +1,373 @@
 {
-  "title": "Drift Monitor",
-  "panels": [],
+  "uid": "drift-monitor",
+  "title": "Data Drift Monitor",
+  "tags": ["drift", "mlops"],
   "schemaVersion": 39,
-  "version": 1
+  "version": 1,
+  "refresh": "10m",
+  "time": {"from": "now-7d", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "title": "Estado del modelo",
+      "type": "stat",
+      "gridPos": {"w": 6, "h": 6, "x": 0, "y": 0},
+      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT\n  CASE\n    WHEN drift_score >= 0.30 THEN 'DRIFT'\n    WHEN drift_score >= 0.20 THEN 'WARNING'\n    ELSE 'OK'\n  END AS \"Estado\",\n  ROUND(drift_score::numeric, 4) AS \"Drift Score\"\nFROM drift_reports\nORDER BY report_date DESC\nLIMIT 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "OK": {"color": "green", "text": "OK", "index": 0},
+                "WARNING": {"color": "yellow", "text": "WARNING", "index": 1},
+                "DRIFT": {"color": "red", "text": "DRIFT", "index": 2}
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{"color": "green", "value": null}]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": "/^Estado$/"
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Drift Score Global (último reporte)",
+      "type": "stat",
+      "gridPos": {"w": 6, "h": 6, "x": 6, "y": 0},
+      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT\n  ROUND(drift_score::numeric, 4) AS \"Drift Score Global\"\nFROM drift_reports\nORDER BY report_date DESC\nLIMIT 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.20},
+              {"color": "red", "value": 0.30}
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Alertas de drift activas (7 días)",
+      "type": "stat",
+      "gridPos": {"w": 6, "h": 6, "x": 12, "y": 0},
+      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS \"Alertas activas\"\nFROM drift_reports\nWHERE alert_triggered IS TRUE\n  AND report_date >= NOW() - INTERVAL '7 days'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 1}
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Último entrenamiento",
+      "type": "stat",
+      "gridPos": {"w": 6, "h": 6, "x": 18, "y": 0},
+      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT training_data_to AS \"Último entrenamiento\"\nFROM model_deployments\nWHERE is_active IS TRUE\nLIMIT 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeAsLocal",
+          "color": {"mode": "fixed", "fixedColor": "blue"},
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Evolución del drift score global",
+      "type": "timeseries",
+      "gridPos": {"w": 24, "h": 9, "x": 0, "y": 6},
+      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT\n  report_date AS time,\n  drift_score AS \"Drift Score Global\",\n  CASE WHEN alert_triggered THEN drift_score ELSE NULL END AS \"Alert disparado\"\nFROM drift_reports\nWHERE $__timeFilter(report_date)\nORDER BY report_date"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "gradientMode": "none",
+            "drawStyle": "line",
+            "spanNulls": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "transparent", "value": null},
+              {"color": "yellow", "value": 0.20},
+              {"color": "red", "value": 0.30}
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "Alert disparado"},
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "points"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 8
+              },
+              {
+                "id": "color",
+                "value": {"mode": "fixed", "fixedColor": "red"}
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "Drift Score Global"},
+            "properties": [
+              {
+                "id": "color",
+                "value": {"mode": "fixed", "fixedColor": "blue"}
+              },
+              {
+                "id": "custom.thresholdsStyle",
+                "value": {"mode": "line"}
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "none"},
+        "legend": {"displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"]},
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {"color": "transparent", "value": null},
+            {"color": "yellow", "value": 0.20},
+            {"color": "red", "value": 0.30}
+          ]
+        },
+        "thresholdsStyle": {"mode": "line"}
+      }
+    },
+    {
+      "id": 6,
+      "title": "Drift score por feature (último reporte)",
+      "type": "barchart",
+      "gridPos": {"w": 24, "h": 10, "x": 0, "y": 15},
+      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT\n  f.key AS \"Feature\",\n  ROUND((f.value->>'drift_score')::numeric, 4) AS \"Drift Score\"\nFROM drift_reports dr,\n  jsonb_each(dr.feature_drifts) AS f(key, value)\nWHERE dr.report_date = (SELECT MAX(report_date) FROM drift_reports)\nORDER BY \"Drift Score\" DESC"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.20},
+              {"color": "red", "value": 0.30}
+            ]
+          },
+          "mappings": [],
+          "custom": {
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "lineWidth": 1,
+            "hideFrom": {"legend": false, "tooltip": false, "viz": false}
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "Feature",
+        "orientation": "horizontal",
+        "groupWidth": 0.7,
+        "barWidth": 0.9,
+        "barRadius": 0,
+        "fillOpacity": 80,
+        "gradientMode": "none",
+        "tooltip": {"mode": "single", "sort": "none"},
+        "legend": {"displayMode": "list", "placement": "bottom", "calcs": []},
+        "colorByField": "Drift Score",
+        "stacking": {"mode": "none", "group": "A"},
+        "showValue": "auto",
+        "text": {}
+      }
+    },
+    {
+      "id": 7,
+      "title": "Historial de alertas de drift",
+      "type": "table",
+      "gridPos": {"w": 24, "h": 8, "x": 0, "y": 25},
+      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT\n  dr.report_date AS \"Fecha\",\n  ROUND(dr.drift_score::numeric, 4) AS \"Drift Score\",\n  dr.alert_triggered AS \"Alerta\",\n  dr.remediation_action AS \"Acción\",\n  md.version AS \"Modelo\"\nFROM drift_reports dr\nJOIN model_deployments md ON md.id = dr.model_version_id\nWHERE dr.alert_triggered IS TRUE\nORDER BY dr.report_date DESC\nLIMIT 30"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "displayMode": "auto",
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "Drift Score"},
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {"color": "green", "value": null},
+                    {"color": "yellow", "value": 0.20},
+                    {"color": "red", "value": 0.30}
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "Alerta"},
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {"type": "value", "options": {"true": {"color": "red", "text": "⚠ Sí", "index": 0}}},
+                  {"type": "value", "options": {"false": {"color": "green", "text": "✓ No", "index": 1}}}
+                ]
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{"displayName": "Fecha", "desc": true}],
+        "footer": {"show": false, "reducer": ["sum"]}
+      }
+    }
+  ]
 }
