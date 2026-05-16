@@ -88,6 +88,9 @@ class ModelSettings(_BaseServiceSettings):
     model_name: str = Field(default="FraudDetectionModel", validation_alias="MODEL_NAME")
     model_stage: str = Field(default="Production", validation_alias="MODEL_STAGE")
     fraud_score_threshold: float = Field(default=0.5, validation_alias="FRAUD_SCORE_THRESHOLD")
+    slow_request_threshold_ms: float = Field(
+        default=50.0, validation_alias="SLOW_REQUEST_THRESHOLD_MS"
+    )
 
 
 class AirflowSettings(_BaseServiceSettings):
