@@ -1,0 +1,159 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: fraud-detection-alerts
+    folder: Fraud Detection
+    interval: 1m
+    rules:
+
+      - uid: alert-high-fraud-rate
+        title: "High Fraud Rate"
+        condition: C
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Fraud rate exceeds 5% for 10 minutes"
+          description: "Current fraud rate: {{ $values.B.Value | printf \"%.2f\" }}%"
+        data:
+          - refId: A
+            datasourceUid: timescaledb
+            model:
+              rawSql: |
+                SELECT
+                  NOW() AS time,
+                  COALESCE(fraud_rate * 100, 0) AS value
+                FROM fraud_volume_hourly
+                WHERE bucket_hour >= NOW() - INTERVAL '1 hour'
+                ORDER BY bucket_hour DESC
+                LIMIT 1
+              format: table
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              conditions: []
+          - refId: C
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [5]
+
+      - uid: alert-fastapi-p99-latency
+        title: "FastAPI P99 Latency High"
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "FastAPI P99 latency exceeds 200ms"
+          description: "Current P99 latency: {{ $values.B.Value | printf \"%.0f\" }}ms"
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                histogram_quantile(0.99,
+                  sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+                ) * 1000
+              legendFormat: P99 latency ms
+              instant: true
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              conditions: []
+          - refId: C
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [200]
+
+      - uid: alert-drift-detected
+        title: "Data Drift Detected"
+        condition: C
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Global drift score above threshold (0.30)"
+          description: "Drift score: {{ $values.B.Value | printf \"%.4f\" }}"
+        data:
+          - refId: A
+            datasourceUid: postgresql
+            model:
+              rawSql: |
+                SELECT
+                  NOW() AS time,
+                  drift_score AS value
+                FROM drift_reports
+                ORDER BY report_date DESC
+                LIMIT 1
+              format: table
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              conditions: []
+          - refId: C
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.30]
+
+      - uid: alert-fraud-spike
+        title: "Fraud Spike — 5 min"
+        condition: C
+        for: 0s
+        labels:
+          severity: high
+        annotations:
+          summary: "More than 5 fraudulent transactions in the last 5 minutes"
+          description: "Fraud count: {{ $values.B.Value }}"
+        data:
+          - refId: A
+            datasourceUid: timescaledb
+            model:
+              rawSql: |
+                SELECT
+                  NOW() AS time,
+                  COUNT(*) AS value
+                FROM transactions
+                WHERE is_fraud IS TRUE
+                  AND "timestamp" >= NOW() - INTERVAL '5 minutes'
+              format: table
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              conditions: []
+          - refId: C
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [5]

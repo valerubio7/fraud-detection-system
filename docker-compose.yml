@@ -454,6 +454,8 @@ services:
       GF_POSTGRES_USER: ${POSTGRES_USER}
       GF_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       GF_POSTGRES_DB: ${POSTGRES_DB}
+      GF_UNIFIED_ALERTING_ENABLED: "true"
+      GF_ALERTING_ENABLED: "false"
     volumes:
       - grafana-data:/var/lib/grafana
     networks:
