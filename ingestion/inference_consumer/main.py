@@ -9,6 +9,7 @@ import threading
 
 from config import kafka_settings
 
+from .alert_publisher import AlertPublisher
 from .api_client import InferenceApiClient
 from .features_consumer import FeaturesConsumer
 from .prediction_publisher import PredictionPublisher
@@ -36,6 +37,14 @@ def install_signal_handlers(stop_event: threading.Event) -> None:
     signal.signal(signal.SIGTERM, _handle_signal)
 
 
+def _classify_severity(score: float) -> str:
+    if score >= 0.90:
+        return "CRITICAL"
+    if score >= 0.75:
+        return "HIGH"
+    return "WARNING"
+
+
 def main() -> None:
     configure_logging()
 
@@ -47,6 +56,10 @@ def main() -> None:
     publisher = PredictionPublisher(
         broker_url=kafka_settings.broker_url,
         topic=kafka_settings.topics_predictions,
+    )
+    alert_publisher = AlertPublisher(
+        broker_url=kafka_settings.broker_url,
+        topic=kafka_settings.topics_alerts,
     )
 
     model_info = api_client.fetch_model_info()
@@ -85,8 +98,31 @@ def main() -> None:
                 model_version_id=deployment_id,
                 latency_ms=prediction["latency_ms"],
             )
+
+            if prediction["prediction_label"]:
+                severity = _classify_severity(prediction["prediction_score"])
+                try:
+                    alert_publisher.publish(
+                        transaction_id=message["transaction_id"],
+                        prediction_score=prediction["prediction_score"],
+                        severity=severity,
+                    )
+                    logger.info(
+                        "Fraud alert published: transaction_id=%s score=%.4f severity=%s",
+                        message["transaction_id"],
+                        prediction["prediction_score"],
+                        severity,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Failed to publish fraud alert for transaction %s: %s",
+                        message["transaction_id"],
+                        exc,
+                    )
+
             consumer.commit()
     finally:
+        alert_publisher.close()
         publisher.close()
         api_client.close()
         consumer.close()
