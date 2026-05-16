@@ -135,7 +135,43 @@ def drift_detection_report() -> None:
     )
 
     @task
-    def save_report_to_postgresql(deployment: dict, report: dict) -> None:
+    def run_model_drift_task(deployment: dict) -> dict:
+        import psycopg2
+
+        import config
+        from mlops.evidently.model_drift import fetch_labeled_predictions, run_model_drift_report
+
+        s = config.postgres_settings
+        conn = psycopg2.connect(
+            host=s.host, port=s.port, user=s.user, password=s.password, dbname=s.db
+        )
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT f1_score, precision, recall"
+                    " FROM public.model_deployments WHERE id = %s",
+                    (deployment["deployment_id"],),
+                )
+                row = cur.fetchone()
+        finally:
+            conn.close()
+
+        ref_metrics = {
+            "f1_score": row[0] if row else None,
+            "precision": row[1] if row else None,
+            "recall": row[2] if row else None,
+        }
+        labeled_df = fetch_labeled_predictions(deployment["deployment_id"])
+        result = run_model_drift_report(ref_metrics, labeled_df)
+        return {
+            "has_sufficient_data": result.has_sufficient_data,
+            "drift_detected": result.drift_detected,
+            "f1_degradation": result.f1_degradation,
+            "current_f1": result.current_f1,
+        }
+
+    @task
+    def save_report_to_postgresql(deployment: dict, report: dict, model_drift: dict) -> None:
         alert_triggered = report["drift_score"] > DRIFT_ALERT_THRESHOLD
 
         conn = _pg_conn()
@@ -168,6 +204,22 @@ def drift_detection_report() -> None:
                         (message,),
                     )
 
+                if model_drift.get("drift_detected"):
+                    deg = model_drift.get("f1_degradation")
+                    f1 = model_drift.get("current_f1")
+                    message = (
+                        f"Model drift detected: F1 degradation={deg:.3f}, "
+                        f"current_f1={f1:.3f} "
+                        f"for model v{deployment['model_version']}"
+                    )
+                    cur.execute(
+                        """
+                        INSERT INTO public.alert_log (alert_type, severity, message)
+                        VALUES ('MODEL_DRIFT_DETECTED', 'HIGH', %s)
+                        """,
+                        (message,),
+                    )
+
             conn.commit()
         except Exception:
             conn.rollback()
@@ -185,12 +237,13 @@ def drift_detection_report() -> None:
     active >> extract_production
     prod_feat = featurize_production(active, XComArg(extract_production))
 
-    # Drift report waits for both featurized datasets
+    # Data drift and model drift run in parallel
     ref_feat >> run_drift
     prod_feat >> run_drift
+    model_drift_result = run_model_drift_task(active)
 
-    # Persist results
-    save_report_to_postgresql(active, XComArg(run_drift))
+    # Persist both results
+    save_report_to_postgresql(active, XComArg(run_drift), model_drift_result)
 
 
 drift_detection_report()
