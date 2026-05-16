@@ -22,3 +22,13 @@ class PredictionResponse(BaseModel):
     prediction_label: bool
     model_version: str
     latency_ms: float
+
+
+class BatchPredictionRequest(BaseModel):
+    items: list[TransactionRequest] = Field(min_length=1, max_length=500)
+
+
+class BatchPredictionResponse(BaseModel):
+    predictions: list[PredictionResponse]
+    total: int
+    latency_ms: float
