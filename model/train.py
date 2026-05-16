@@ -320,6 +320,7 @@ def start_mlflow_run(
 def log_mlflow_outputs(
     model: XGBClassifier,
     X_val: pd.DataFrame,
+    X_full: pd.DataFrame,
     y_train: pd.Series,
     output_dir: Path,
     params: dict[str, object],
@@ -403,6 +404,8 @@ def log_mlflow_outputs(
         active_run.info.run_id,
         mlflow.get_experiment(active_run.info.experiment_id).name,
     )
+    reference_path = output_dir / "reference_dataset.parquet"
+    X_full[features].to_parquet(reference_path, index=False)
     mlflow.log_artifacts(str(output_dir))
 
     return active_run.info.run_id, active_run.info.experiment_id
@@ -605,6 +608,7 @@ def main() -> None:
         run_id, experiment_id = log_mlflow_outputs(
             model=model,
             X_val=X_val,
+            X_full=X_full,
             y_train=y_train,
             output_dir=output_dir,
             params=params,

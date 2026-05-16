@@ -16,6 +16,7 @@ sys.path.insert(0, "/opt/airflow/project")
 
 from fraud_operators import EvidentlyReportOperator, TimescaleExtractOperator
 
+from mlops.evidently.reference import load_reference_dataset
 from model.selected_features import SELECTED_FEATURES
 
 DAG_ID = "drift_detection_report"
@@ -25,15 +26,6 @@ ENCODER_DST_DIR = "/tmp/drift_encoder"
 REFERENCE_PARQUET = "/tmp/drift_reference.parquet"
 PRODUCTION_PARQUET = "/tmp/drift_production.parquet"
 MIN_PRODUCTION_ROWS = 100
-
-_REFERENCE_SQL = """
-    SELECT transaction_id, user_id, merchant_id, merchant_category,
-           amount, country, device_type, ip_hash, timestamp, is_fraud
-    FROM public.transactions
-    WHERE is_fraud IS NOT NULL
-    ORDER BY timestamp DESC
-    LIMIT 50000
-"""
 
 _PRODUCTION_SQL = """
     SELECT transaction_id, user_id, merchant_id, merchant_category,
@@ -98,13 +90,6 @@ def drift_detection_report() -> None:
             "mlflow_run_id": str(mlflow_run_id),
         }
 
-    # Extraction — raw transaction rows to Parquet (no featurization yet)
-    extract_reference = TimescaleExtractOperator(
-        task_id="fetch_reference_data",
-        sql=_REFERENCE_SQL,
-        output_path="/tmp/drift_raw_reference.parquet",
-    )
-
     extract_production = TimescaleExtractOperator(
         task_id="fetch_production_data",
         sql=_PRODUCTION_SQL,
@@ -112,16 +97,14 @@ def drift_detection_report() -> None:
     )
 
     @task
-    def featurize_reference(active: dict, raw_path: str) -> str:
-        import pandas as pd
+    def featurize_reference(active: dict) -> str:
+        import config
 
-        from feature_engineering.offline.featurizer import TransactionFeaturizer
-
-        encoder_dir = _download_encoder(active["mlflow_run_id"])
-        featurizer = TransactionFeaturizer(encoders_dir=encoder_dir)
-        df = pd.read_parquet(raw_path).sort_values("timestamp").reset_index(drop=True)
-        X = featurizer.transform(df)
-        X[SELECTED_FEATURES].to_parquet(REFERENCE_PARQUET, index=False)
+        ref_df = load_reference_dataset(
+            run_id=active["mlflow_run_id"],
+            tracking_uri=config.mlflow_settings.tracking_uri,
+        )
+        ref_df[SELECTED_FEATURES].to_parquet(REFERENCE_PARQUET, index=False)
         return REFERENCE_PARQUET
 
     @task
@@ -195,12 +178,11 @@ def drift_detection_report() -> None:
     # --- Dependency wiring ---
     active = fetch_active_deployment()
 
-    # Extraction runs in parallel once the active deployment is known
-    active >> extract_reference
-    active >> extract_production
+    # Reference comes from the MLflow artifact of the active run
+    ref_feat = featurize_reference(active)
 
-    # Featurization applies the encoder from MLflow to the raw Parquets
-    ref_feat = featurize_reference(active, XComArg(extract_reference))
+    # Production extraction runs once the active deployment is known
+    active >> extract_production
     prod_feat = featurize_production(active, XComArg(extract_production))
 
     # Drift report waits for both featurized datasets
