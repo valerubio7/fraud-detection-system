@@ -2,13 +2,12 @@
 Offline batch featurizer for fraud detection model training.
 
 Replicates the features produced by the online pipeline
-(ingestion/consumer/windows.py and ingestion/consumer/historical.py)
+(ingestion/consumer/window_store.py and ingestion/consumer/historical_store.py)
 in a batch, point-in-time correct manner.
 """
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -380,15 +379,6 @@ class TransactionFeaturizer:
         return out
 
     def fit_transform(self, df: pd.DataFrame, y: pd.Series) -> pd.DataFrame:
-        """Fit encoders on df and return its computed features.
-
-        Args:
-            df: Training DataFrame with at least the columns in ``_REQUIRED_COLUMNS``.
-            y: Binary target series aligned with df (the ``is_fraud`` column).
-
-        Returns:
-            DataFrame with all engineered features.
-        """
         return self.fit(df, y).transform(df)
 
     def get_feature_names(self) -> list[str]:
@@ -426,41 +416,3 @@ __all__ = [
     "WINDOW_FEATURES",
     "HISTORICAL_FEATURES",
 ]
-
-
-if __name__ == "__main__":
-    # Add project root to sys.path so config.py is importable when run directly
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-    import psycopg2  # noqa: E402
-
-    import config  # noqa: E402
-
-    settings = config.timescaledb_settings
-    conn = psycopg2.connect(
-        host=settings.host,
-        port=settings.port,
-        user=settings.user,
-        password=settings.password,
-        dbname=settings.db,
-    )
-
-    query = """
-        SELECT
-            transaction_id, user_id, merchant_id, merchant_category,
-            amount, country, device_type, ip_hash, timestamp, is_fraud
-        FROM public.transactions
-        ORDER BY timestamp
-        LIMIT 5000
-    """
-    df = pd.read_sql(query, conn)
-    conn.close()
-    print(f"Cargadas {len(df):,} transacciones desde TimescaleDB.")
-
-    featurizer = TransactionFeaturizer()
-    X = featurizer.fit_transform(df, df["is_fraud"])
-
-    print(f"Shape del feature matrix: {X.shape}")
-    print(f"Features: {featurizer.get_feature_names()}")
-    print()
-    print(X.head())

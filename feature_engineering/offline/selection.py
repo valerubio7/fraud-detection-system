@@ -200,6 +200,7 @@ def select_features(
     correlation_threshold: float = 0.85,
     use_boruta: bool = False,
     random_state: int = 42,
+    max_iter: int = 50,
 ) -> FeatureSelectionReport:
     """Orchestrate the full feature selection pipeline.
 
@@ -263,7 +264,7 @@ def select_features(
     # Step 4 — Boruta (optional)
     boruta_results: dict[str, list[str]] | None = None
     if use_boruta:
-        logger.info("Running Boruta (max_iter=%d)...", 50)
+        logger.info("Running Boruta (max_iter=%d)...", max_iter)
         boruta_results = run_boruta(X, y, random_state=random_state)
         for feat in boruta_results["rejected"]:
             if feat not in drop_reason:
@@ -298,62 +299,3 @@ __all__ = [
     "select_features",
     "FeatureSelectionReport",
 ]
-
-
-# ---------------------------------------------------------------------------
-# Standalone example
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    import sys
-    from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-
-    import psycopg2  # noqa: E402
-
-    import config  # noqa: E402
-    from feature_engineering.offline.featurizer import TransactionFeaturizer  # noqa: E402
-
-    settings = config.timescaledb_settings
-    conn = psycopg2.connect(
-        host=settings.host,
-        port=settings.port,
-        user=settings.user,
-        password=settings.password,
-        dbname=settings.db,
-    )
-    query = """
-        SELECT
-            transaction_id, user_id, merchant_id, merchant_category,
-            amount, country, device_type, ip_hash, timestamp, is_fraud
-        FROM public.transactions
-        ORDER BY timestamp
-    """
-    df = pd.read_sql(query, conn)
-    conn.close()
-    print(f"Cargadas {len(df):,} transacciones desde TimescaleDB.")
-
-    y_full = df["is_fraud"].astype(int)
-    featurizer = TransactionFeaturizer()
-    X_full = featurizer.fit_transform(df, y_full)
-
-    split = int(len(X_full) * 0.8)
-    X_train = X_full.iloc[:split]
-    y_train = y_full.iloc[:split]
-
-    report = select_features(X_train, y_train, use_boruta=False)
-
-    print("\n=== FeatureSelectionReport ===")
-    print(f"Features seleccionadas ({len(report.selected_features)}): {report.selected_features}")
-    print(f"Features eliminadas   ({len(report.dropped_features)}):")
-    for feat in report.dropped_features:
-        print(f"  {feat:35s} motivo: {report.drop_reason[feat]}")
-    print("\nImportancias XGBoost:")
-    print(report.importance_df.to_string(index=False))
-    if report.redundant_pairs:
-        print("\nPares redundantes:")
-        for fa, fb, r in report.redundant_pairs:
-            print(f"  {fa} <-> {fb}  r={r:.4f}")

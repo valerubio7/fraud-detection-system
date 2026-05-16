@@ -79,15 +79,6 @@ class TargetEncoder:
         return X.astype(str).map(self.mapping_).fillna(self.global_mean_)
 
     def fit_transform(self, X: pd.Series, y: pd.Series) -> pd.Series:
-        """Fit and immediately transform X.
-
-        Args:
-            X: Categorical feature series.
-            y: Binary target series.
-
-        Returns:
-            Float series of encoded values.
-        """
         return self.fit(X, y).transform(X)
 
 
@@ -132,14 +123,6 @@ class OrdinalEncoder:
         return X.astype(str).map(self.mapping_).fillna(-1).astype(np.int64)
 
     def fit_transform(self, X: pd.Series) -> pd.Series:
-        """Fit and immediately transform X.
-
-        Args:
-            X: Categorical feature series.
-
-        Returns:
-            Integer series of encoded values.
-        """
         return self.fit(X).transform(X)
 
 
