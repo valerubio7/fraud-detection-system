@@ -464,3 +464,62 @@ La combinación de los cuatro DAGs crea un ciclo de vida autónomo:
 ```
 
 Esta arquitectura garantiza que ningún paso del ciclo depende de intervención manual: el reentrenamiento dispara la validación, la validación promueve o archiva, el drift detectado vuelve a disparar el reentrenamiento.
+
+## Fase 7: monitoreo y observabilidad
+
+### 7.1 Instrumentación de métricas con Prometheus
+
+El objetivo de esta fase fue dar visibilidad operativa al stack en tiempo real, complementando los reportes de drift (que trabajan sobre datos históricos) con métricas de infraestructura y comportamiento HTTP.
+
+**Datasource Prometheus en Grafana** (`monitoring/grafana/provisioning/datasources.yaml`): se agregó un tercer datasource al archivo de provisioning con uid fijo `prometheus`, apuntando a `http://prometheus:9090`. Se eligió `httpMethod: POST` porque Grafana 10.4+ lo recomienda para queries largas. El uid fijo permite que los dashboards JSON lo referencien sin depender de IDs autogenerados por la UI.
+
+**Instrumentación de FastAPI** (`serving/app/main.py`): se integró `prometheus-fastapi-instrumentator` con una sola línea al nivel del módulo: `Instrumentator().instrument(app).expose(app)`. Esto expone automáticamente el endpoint `GET /metrics` con métricas estándar: `http_requests_total` (contador por método, handler y status code), `http_request_duration_seconds` (histograma de latencia con buckets) y `up` (liveness del target). La inicialización va fuera del lifespan porque debe ejecutarse en tiempo de importación del módulo, no en el arranque del servidor.
+
+La dependencia se declaró en `pyproject.toml` como `prometheus-fastapi-instrumentator>=0.9.0` (sin upper bound), lo que resolvió un problema de compatibilidad: el constraint original `<1.0.0` no tenía wheels disponibles para Python 3.14, que forma parte del rango `requires-python = ">=3.11"` del proyecto. El lockfile se regeneró con `uv lock` y resolvió en v7.1.0.
+
+**Servicio Prometheus** (`docker-compose.yml`): se agregó `prom/prometheus:v2.51.0` con un volumen bind-mount de solo lectura para la configuración y un volumen named `prometheus-data` para la retención de series temporales. Los flags de arranque configuran retención a 15 días y habilitan el lifecycle endpoint (permite recargar configuración sin reiniciar). El servicio Grafana incorporó `prometheus: condition: service_started` en su `depends_on`.
+
+**Configuración de scrape** (`monitoring/prometheus/prometheus.yml`): un único job `fastapi` que scrapea `fastapi:8000/metrics` cada 10 segundos. El scrape global se fijó en 15 segundos. No se incluyeron exporters adicionales (kafka-exporter, node-exporter) porque habrían requerido servicios extra no contemplados en el stack; esta limitación queda documentada en el Panel 10 del dashboard de system health.
+
+### 7.2 Dashboards de Grafana
+
+Se implementaron cuatro dashboards provisionados automáticamente mediante archivos JSON en `monitoring/grafana/dashboards/`. El Dockerfile de Grafana los copia a `/etc/grafana/dashboards/` (fuera del volumen `grafana-data`) y el archivo de provisioning apunta a esa ruta. Esta decisión evita que el volumen named, que persiste entre reinicios y puede contener datos de versiones anteriores, tape los archivos de la imagen con versiones desactualizadas. El provisioning de dashboards apunta en `monitoring/grafana/provisioning/dashboards.yaml`.
+
+Todos los dashboards usan `schemaVersion: 39` y quedan bajo la carpeta **Fraud Detection** de Grafana.
+
+**`fraud_alerts.json` — Alertas en vivo** (uid: `fraud-alerts`, refresh 30s, ventana 1h): seis paneles que combinan el datasource `timescaledb` (gauge de tasa de fraude actual desde `fraud_volume_hourly`, time series de volumen por minuto, tabla de top 10 merchants, dos stat de conteos horarios) y el datasource `postgresql` (tabla de alertas recientes desde `alert_log`). La tabla de alertas aplica `color-background` sobre el campo `Severidad` con value mappings por texto para colorear CRITICAL/HIGH/WARNING/INFO sin depender de valores numéricos.
+
+**`model_performance.json` — Model Performance** (uid: `model-performance`, refresh 5m, ventana 30d): siete paneles exclusivamente sobre el datasource `postgresql`. Los cuatro stat de métricas del modelo activo (F1, AUC-ROC, precisión, recall) usan `percentunit` y thresholds alineados con los quality gates del sistema (F1 ≥ 0.85, AUC-ROC ≥ 0.90). El time series de latencia usa `to_timestamp(floor(extract(epoch FROM col) / 300) * 300)` para bucketing de 5 minutos compatible con PostgreSQL estándar, sin `time_bucket`. La tabla champion vs. challenger colorea las columnas F1 y AUC-ROC con los mismos umbrales para facilitar la comparación visual. El histograma de distribución de scores delega el bucketing al motor de Grafana, pasando los valores crudos con `prediction_score` como serie.
+
+**`drift_monitor.json` — Data Drift Monitor** (uid: `drift-monitor`, refresh 10m, ventana 7d): siete paneles sobre `postgresql`. El panel de estado del modelo (semáforo) usa `value mappings` por texto (OK → verde, WARNING → amarillo, DRIFT → rojo) en lugar de thresholds numéricos, porque la columna `Estado` es una cadena generada por un `CASE WHEN` en la query. Las líneas de referencia del time series de evolución del drift score (umbral crítico 0.20 y global 0.30) se implementan con `thresholdsStyle: line` en el field config, que dibuja líneas horizontales automáticas sobre la serie. El bar chart de drift por feature expande la columna JSONB `feature_drifts` de `drift_reports` con `jsonb_each()` directamente en la query SQL, devolviendo una fila por feature del último reporte.
+
+**`system_health.json` — System Health** (uid: `system-health`, refresh 30s, ventana 1h): diez paneles que cruzan los tres datasources. Los seis primeros usan PromQL sobre `prometheus`: stat de up/down con value mappings 0→DOWN/1→UP, request rate con `round(sum(rate(...)))`, error rate de 5xx como ratio, gauge de P99 con thresholds en 50ms y 200ms, y dos time series de rate por endpoint y latencia por percentil. Los paneles 7 y 8 son stat de conteos sobre `postgresql` y `timescaledb` respectivamente. El panel 9 usa el datasource especial `-- Mixed --` (uid `-- Mixed --`) para combinar en un único time series las transacciones (`time_bucket` en TimescaleDB) y las predicciones (`to_timestamp(floor(...))` en PostgreSQL), con cada query especificando su datasource propio en el campo `datasource` del target. El panel 10 es un panel `text` con Markdown que documenta la ausencia de Kafka consumer lag, indicando qué servicio adicional sería necesario.
+
+### 7.3 Alertas provisionadas con Unified Alerting
+
+Se creó `monitoring/grafana/provisioning/alerting/alerts.yaml` con cuatro reglas de alerta bajo el grupo `fraud-detection-alerts`, carpeta `Fraud Detection`, evaluadas cada minuto.
+
+Cada regla sigue el pipeline estándar de Grafana Unified Alerting con tres refIds: `A` (query al datasource), `B` (expresión `reduce` con función `last` sobre A) y `C` (expresión `threshold` sobre B que define la condición de disparo). Este diseño desacopla la obtención del dato de la lógica de comparación, lo que permite cambiar umbrales sin modificar queries SQL o PromQL.
+
+Las cuatro reglas:
+
+| Regla | Datasource | Condición | `for` | Severidad |
+|---|---|---|---|---|
+| High Fraud Rate | `timescaledb` | `fraud_rate * 100 > 5` | 10m | critical |
+| FastAPI P99 Latency High | `prometheus` | `histogram_quantile P99 > 200ms` | 5m | warning |
+| Data Drift Detected | `postgresql` | `drift_score > 0.30` | 0s | critical |
+| Fraud Spike — 5 min | `timescaledb` | `COUNT(is_fraud) > 5` en 5 min | 0s | high |
+
+Un bug encontrado durante la integración fue que Grafana 10.4 rechaza reglas sin `relativeTimeRange` explícito en cada entrada del array `data`, fallando al arrancar con `invalid relative time range: {From:0s To:0s}`. Se corrigió agregando `from`/`to` en segundos a cada refId: 3600 para queries SQL de ventana horaria, 600 para queries Prometheus de ventana de 10 minutos, y `{from: 0, to: 0}` para los refIds de expresión (que no tienen rango propio).
+
+El Dockerfile de Grafana copia el directorio de alerting al provisioning con `COPY monitoring/grafana/provisioning/alerting/ /etc/grafana/provisioning/alerting/`, y el servicio tiene `GF_UNIFIED_ALERTING_ENABLED=true` y `GF_ALERTING_ENABLED=false` para desactivar el sistema de alertas legado.
+
+### 7.4 Fixes de integración y lecciones
+
+Durante la ejecución de `scripts/setup.sh` se detectaron tres problemas que derivaron en correcciones permanentes:
+
+**Lockfile desactualizado**: al agregar `prometheus-fastapi-instrumentator` a `pyproject.toml` sin correr `uv lock` después, el Dockerfile de FastAPI usa `uv sync --frozen` que lee el lockfile estrictamente. El paquete no estaba en el lockfile, no se instaló en la imagen, y el contenedor fallaba al arrancar con `ModuleNotFoundError`. La corrección exige el paso `uv lock` como parte del workflow de agregar dependencias.
+
+**Volumen Docker tapa el contenido de la imagen**: los dashboards se copiaban a `/var/lib/grafana/dashboards/` en el Dockerfile, pero el servicio monta `grafana-data:/var/lib/grafana`. Si el volumen ya existe (de ejecuciones previas), su contenido prevalece sobre el de la imagen y los archivos nuevos nunca se ven. La solución es copiar los archivos provisionados a rutas que no están cubiertas por ningún volumen. En este caso, `/etc/grafana/dashboards/` es la ruta correcta para dashboards estáticos provisionados.
+
+**healthcheck de Prometheus en setup.sh**: se agregó la función `check_prometheus` (que llama a `/-/healthy`) y los dos `wait_for_service "prometheus"` correspondientes (etapas 3 y 5), junto con la URL `http://localhost:9090` en el resumen final.

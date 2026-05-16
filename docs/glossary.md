@@ -284,6 +284,43 @@ Transacción fraudulenta que el modelo no detectó. Impacto: pérdida económica
 
 ---
 
+## Monitoreo e infraestructura de observabilidad
+
+**Prometheus**
+Sistema de recolección y almacenamiento de métricas de series temporales. Funciona en modo pull: scrapea periódicamente los endpoints `/metrics` de los servicios y guarda los datos en su propia base de datos interna. En este proyecto scrapea el endpoint de FastAPI cada 10 segundos. Accesible en `http://localhost:9090`.
+
+**Scrape**
+Proceso mediante el cual Prometheus consulta el endpoint `/metrics` de un servicio y recolecta las métricas disponibles. La frecuencia se configura con `scrape_interval`. En este proyecto el job `fastapi` scrapea `fastapi:8000/metrics` cada 10 segundos.
+
+**PromQL**
+Lenguaje de consultas de Prometheus. Permite agregar, filtrar y transformar series temporales. En este proyecto se usa en los dashboards de Grafana para calcular request rate (`rate()`), percentiles de latencia (`histogram_quantile()`) y estado del servicio (`up`).
+
+**Contador (Counter)**
+Tipo de métrica de Prometheus que solo puede crecer. Se usa para acumular eventos: requests totales, errores, bytes enviados. Para obtener una tasa se aplica `rate()` sobre el contador. En este proyecto `http_requests_total` es un counter.
+
+**Histograma (Prometheus)**
+Tipo de métrica que registra la distribución de valores en buckets predefinidos. Permite calcular percentiles con `histogram_quantile()`. En este proyecto `http_request_duration_seconds` es un histograma con buckets que permiten calcular P50, P95 y P99 de latencia.
+
+**`prometheus-fastapi-instrumentator`**
+Librería Python que instrumenta una aplicación FastAPI automáticamente: expone `GET /metrics` con contadores e histogramas de latencia HTTP sin necesidad de código adicional. Se inicializa con `Instrumentator().instrument(app).expose(app)` al nivel del módulo (no dentro del lifespan) para que las métricas estén disponibles desde el primer request.
+
+**Provisioning de Grafana**
+Mecanismo para configurar Grafana mediante archivos YAML y JSON, sin necesidad de usar la interfaz web. Grafana lee los archivos de `/etc/grafana/provisioning/` al arrancar y aplica datasources, dashboards y reglas de alerta automáticamente. Esto hace la configuración reproducible y versionable en git.
+
+**Grafana Unified Alerting**
+Sistema de alertas de Grafana desde la versión 8. Reemplaza al legacy alerting y soporta múltiples datasources por regla, pipelines de notificación y provisioning via YAML. En este proyecto se habilita con `GF_UNIFIED_ALERTING_ENABLED=true` y se desactiva el sistema legado con `GF_ALERTING_ENABLED=false`.
+
+**`relativeTimeRange`**
+Campo requerido en cada query de una regla de alerta de Grafana Unified Alerting. Define el rango de tiempo que la query debe cubrir, expresado en segundos (`from`: cuántos segundos atrás, `to`: hasta cuándo, normalmente 0 = ahora). Sin este campo, Grafana usa `{From:0s To:0s}`, que es inválido y provoca un error de arranque.
+
+**Panel Mixed datasource**
+Panel de Grafana que puede combinar queries de distintos datasources en una sola visualización. Se configura con `datasource: {uid: "-- Mixed --"}` a nivel del panel, y cada query (target) especifica su propio datasource. Útil cuando se necesita correlacionar métricas de sistemas diferentes en un mismo gráfico.
+
+**Volumen named (Docker)**
+Volumen gestionado por Docker con un nombre explícito (ej. `grafana-data`). Docker lo inicializa con el contenido de la imagen solo en la primera creación. Si el volumen ya existe, su contenido persiste y tapa cualquier archivo que la imagen tenga en la misma ruta. En este proyecto este comportamiento fue la causa de que los dashboards de Grafana no aparecieran: estaban en `/var/lib/grafana/dashboards/` (ruta cubierta por el volumen) en lugar de `/etc/grafana/dashboards/` (ruta fuera del volumen).
+
+---
+
 ## Convenciones del proyecto
 
 **Conventional Commits**
