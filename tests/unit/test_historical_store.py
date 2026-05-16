@@ -54,6 +54,14 @@ class TestHistoricalProfileStoreReturningUser:
 
 
 class TestHistoricalProfileStoreSnapshot:
+    def test_snapshot_of_unknown_user_returns_empty(self):
+        store = HistoricalProfileStore()
+        snap = store.to_snapshot("user_never_seen")
+        assert snap["amount_count"] == 0
+        assert snap["amount_total"] == 0.0
+        assert snap["countries_seen"] == []
+        assert snap["merchants_seen"] == []
+
     def test_snapshot_roundtrip(self):
         store = HistoricalProfileStore()
         tx = make_transaction(amount=100.0, country="AR", merchant_id="m1")

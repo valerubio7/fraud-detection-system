@@ -67,6 +67,17 @@ class TestSlidingWindowStoreWindowCounts:
         assert features.tx_count_7d == 0
 
 
+class TestSlidingWindowStoreUserIsolation:
+    def test_different_users_are_isolated(self):
+        base = datetime(2025, 1, 15, 12, 0, 0, tzinfo=UTC)
+        store = SlidingWindowStore()
+        store.add(make_transaction(user_id="user_A", amount=100.0, timestamp=base))
+        features_b = store.compute_features(make_transaction(user_id="user_B", timestamp=base))
+        assert features_b.tx_count_1h == 0
+        assert features_b.tx_count_24h == 0
+        assert features_b.seconds_since_last_tx == -1.0
+
+
 class TestSlidingWindowStoreHydrate:
     def test_hydrate_restores_window(self):
         base = datetime(2025, 1, 15, 12, 0, 0, tzinfo=UTC)

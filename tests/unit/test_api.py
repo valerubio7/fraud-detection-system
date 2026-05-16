@@ -96,6 +96,12 @@ class TestModelInfoEndpoint:
         assert "fraud_score_threshold" in body
         assert "loaded_at" in body
 
+    async def test_model_info_returns_503_when_model_not_loaded(self):
+        app.state.model_loader = MagicMock(_model=None)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/model/info")
+        assert response.status_code == 503
+
 
 class TestPredictEndpoint:
     async def test_predict_valid_request_returns_200(self):

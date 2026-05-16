@@ -125,6 +125,18 @@ class TestPrepareFeatures:
         result = loader_with_mock_encoder.prepare_features(raw, self.WINDOW_FEATURES)
         assert result[0, 0] == pytest.approx(np.log1p(0.0))  # = 0.0
 
+    def test_unknown_merchant_and_country_fall_back_to_global_mean(self, loader_with_mock_encoder):
+        raw = {
+            "amount": 100.0,
+            "timestamp": datetime(2025, 1, 15, 14, 0, 0, tzinfo=UTC),
+            "merchant_category": "unknown_cat",
+            "country": "XX",
+            "device_type": "mobile",
+        }
+        result = loader_with_mock_encoder.prepare_features(raw, self.WINDOW_FEATURES)
+        assert result[0, 3] == pytest.approx(0.0)  # _mc_global
+        assert result[0, 4] == pytest.approx(0.0)  # _country_global
+
 
 class TestModelLoaderLoad:
     def _make_mock_config(self):

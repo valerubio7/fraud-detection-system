@@ -13,7 +13,9 @@ def dagbag():
 
 def _get_dag(dagbag, dag_id):
     """Devuelve el DAG desde el cache local (sin consultar la BD)."""
-    return dagbag.dags.get(dag_id)
+    dag = dagbag.dags.get(dag_id)
+    assert dag is not None, f"DAG '{dag_id}' no está en el DagBag — posible error de importación"
+    return dag
 
 
 class TestDagBagLoads:
