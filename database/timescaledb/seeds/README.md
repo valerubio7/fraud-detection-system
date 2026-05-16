@@ -1,42 +1,47 @@
 # Seed de transacciones en TimescaleDB
 
-Este directorio contiene el script para generar 10.000 transacciones sinteticas e insertarlas en la hypertable `public.transactions`.
+Genera transacciones sintéticas e las inserta en la hypertable `public.transactions`.
 
-## Requisitos
+## Variables de entorno requeridas
 
-- Python 3.10+
-- Dependencia: `psycopg2` o `psycopg2-binary`
+El script lee la configuración desde el `.env` del proyecto:
 
-## Variables de entorno
+- `TIMESCALE_HOST` (default: `localhost`)
+- `TIMESCALE_PORT` (default: `5432`)
+- `TIMESCALE_USER` (default: `postgres`)
+- `TIMESCALE_PASSWORD` (default: `postgres`)
+- `TIMESCALE_DB` (default: `timescaledb`)
 
-El script lee la configuracion desde:
+## Uso con Docker (recomendado)
 
-- `TIMESCALEDB_HOST` (default: `localhost`)
-- `TIMESCALEDB_PORT` (default: `5432`)
-- `TIMESCALEDB_USER` (default: `postgres`)
-- `TIMESCALEDB_PASSWORD` (default: `postgres`)
-- `TIMESCALEDB_DB` (default: `timescaledb`)
-
-## Uso
+Asegurate de tener el stack levantado (`docker compose up -d timescaledb`), luego cargá las variables del `.env` y ejecutá:
 
 ```bash
-python database/timescaledb/seeds/seed_transactions.py \
-  --count 10000 \
-  --fraud-rate 0.02 \
-  --seed 42 \
-  --batch-size 500
+set -a; source .env; set +a
+
+docker compose run --rm --no-deps --entrypoint python \
+  -v "$(pwd)":/app -w /app \
+  -e PYTHONPATH=/app \
+  -e TIMESCALE_HOST=timescaledb \
+  -e TIMESCALE_PORT=5432 \
+  -e TIMESCALE_USER="${TIMESCALE_USER}" \
+  -e TIMESCALE_PASSWORD="${TIMESCALE_PASSWORD}" \
+  -e TIMESCALE_DB="${TIMESCALE_DB}" \
+  airflow-webserver \
+  database/timescaledb/seeds/seed_transactions.py \
+  --count 10000 --fraud-rate 0.02 --seed 42 --batch-size 500
 ```
 
-Parametros:
+## Parámetros
 
-- `--count`: cantidad de transacciones a insertar (default 10000)
-- `--fraud-rate`: proporcion de fraude (default 0.02)
-- `--seed`: seed para reproducibilidad (default 42)
-- `--batch-size`: tamano del batch para insertar (default 500)
+| Parámetro      | Default | Descripción                              |
+|----------------|---------|------------------------------------------|
+| `--count`      | 10000   | Cantidad de transacciones a insertar     |
+| `--fraud-rate` | 0.02    | Proporción de fraude (0-1)               |
+| `--seed`       | 42      | Seed para reproducibilidad               |
+| `--batch-size` | 500     | Tamaño del batch de inserción            |
 
-El script imprime progreso cada 1000 filas y un resumen al finalizar.
-
-## Verificacion (SQL)
+## Verificación (SQL)
 
 ```sql
 -- Total de registros y fraude
@@ -45,7 +50,7 @@ SELECT
     COUNT(*) FILTER (WHERE is_fraud IS TRUE) AS fraude
 FROM public.transactions;
 
--- Distribucion por pais
+-- Distribución por país
 SELECT country, COUNT(*)
 FROM public.transactions
 GROUP BY country
@@ -55,7 +60,7 @@ ORDER BY COUNT(*) DESC;
 SELECT MIN("timestamp") AS min_ts, MAX("timestamp") AS max_ts
 FROM public.transactions;
 
--- Ejemplo de verificacion de rafaga (frecuencia alta)
+-- Ejemplo de verificación de ráfaga (frecuencia alta)
 SELECT user_id, COUNT(*) AS tx_count
 FROM public.transactions
 WHERE "timestamp" >= NOW() - INTERVAL '30 minutes'

@@ -308,6 +308,14 @@ wait_for_service "fastapi" check_fastapi 60 3
 # ============================================================================
 print_step "Etapa 4/5 — Inicializando Airflow, Kafka y migraciones SQL"
 
+print_step "Airflow: creando base de datos airflow_metadata si no existe"
+docker compose exec -T postgresql psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tc \
+  "SELECT 1 FROM pg_database WHERE datname = 'airflow_metadata'" \
+  | grep -q 1 \
+  || docker compose exec -T postgresql psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" \
+       -c "CREATE DATABASE airflow_metadata;"
+print_success "Base de datos airflow_metadata lista"
+
 print_step "Airflow: esperando que airflow-init complete (crea BD, migra esquema, crea admin)"
 if ! docker compose ps --all airflow-init 2>/dev/null | grep -q "Exited (0)"; then
   docker compose up -d airflow-init
@@ -364,7 +372,7 @@ printf "\nComandos útiles:\n"
 printf "  Ver logs:       docker compose logs -f [servicio]\n"
 printf "  Detener stack:  docker compose down\n"
 printf "  Producción:     docker compose -f docker-compose.yml up -d\n"
-printf "  Seed data:      ./scripts/seed-timescale.sh\n"
+printf "  Seed data:      ver database/timescaledb/seeds/README.md\n"
 
 printf "\nSimulaciones (producer):\n"
 printf "  uv run python -m ingestion.producer.main --mode live --tps 10 --fraud-rate 0.02\n"
