@@ -14,7 +14,7 @@ serving = [
   "mlflow==2.17.2",
   "numpy>=1.26.0,<3.0.0",
   "pandas>=2.2.0,<3.0.0",
-  "prometheus-fastapi-instrumentator>=0.9.0,<1.0.0",
+  "prometheus-fastapi-instrumentator>=0.9.0",
   "psycopg2-binary>=2.9.0,<3.0.0",
   "pydantic-settings>=2.0.0,<3.0.0",
   "redis>=5.0.0,<6.0.0",

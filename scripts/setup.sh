@@ -124,6 +124,10 @@ check_kafka_ui() {
   curl -fsS http://localhost:8080 >/dev/null 2>&1
 }
 
+check_prometheus() {
+  curl -fsS http://localhost:9090/-/healthy >/dev/null 2>&1
+}
+
 ensure_airflow_admin_user() {
   local output
 
@@ -309,6 +313,7 @@ docker compose run --rm -e MLFLOW_TRACKING_URI=http://mlflow:5000 \
   && print_success "MLflow inicializado correctamente"
 
 wait_for_service "fastapi" check_fastapi 60 3
+wait_for_service "prometheus" check_prometheus 60 3
 
 # ============================================================================
 # Etapa 4 — Inicializar servicios
@@ -361,6 +366,7 @@ wait_for_service "kafka" check_kafka 30 3
 wait_for_service "mlflow" check_mlflow 30 3
 wait_for_service "fastapi" check_fastapi 30 3
 wait_for_service "airflow-webserver" check_airflow_webserver 30 3
+wait_for_service "prometheus" check_prometheus 30 3
 wait_for_service "grafana" check_grafana 30 3
 wait_for_service "kafka-ui" check_kafka_ui 30 3
 
@@ -372,6 +378,7 @@ printf "  FastAPI       → http://localhost:8000\n"
 printf "  FastAPI docs  → http://localhost:8000/docs\n"
 printf "  MLflow        → http://localhost:5000\n"
 printf "  Airflow       → http://localhost:8081\n"
+printf "  Prometheus    → http://localhost:9090\n"
 printf "  Grafana       → http://localhost:3000\n"
 printf "  Kafka UI      → http://localhost:8080\n"
 
