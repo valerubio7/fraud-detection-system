@@ -10,9 +10,8 @@ router = APIRouter(tags=["health"])
 def health(request: Request) -> JSONResponse:
     loader = getattr(request.app.state, "model_loader", None)
     model_loaded = loader is not None and loader._model is not None
-    if model_loaded:
-        return JSONResponse({"status": "ok", "model_loaded": True}, status_code=200)
-    return JSONResponse({"status": "degraded", "model_loaded": False}, status_code=503)
+    status = "ok" if model_loaded else "degraded"
+    return JSONResponse({"status": status, "model_loaded": model_loaded}, status_code=200)
 
 
 @router.get("/model/info")
