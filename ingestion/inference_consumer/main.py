@@ -6,17 +6,22 @@ import logging
 import os
 import signal
 import threading
+import time
 
 from config import kafka_settings
 
 from .alert_publisher import AlertPublisher
 from .api_client import InferenceApiClient
+from .circuit_breaker import CircuitBreaker
 from .features_consumer import FeaturesConsumer
 from .prediction_publisher import PredictionPublisher
 
 logger = logging.getLogger(__name__)
 
 FASTAPI_BASE_URL = os.getenv("FASTAPI_BASE_URL", "http://fastapi:8000")
+INFERENCE_FAILURE_THRESHOLD = int(os.getenv("INFERENCE_FAILURE_THRESHOLD", "5"))
+INFERENCE_COOLDOWN_SECONDS = float(os.getenv("INFERENCE_COOLDOWN_SECONDS", "30.0"))
+INFERENCE_RATE_LIMIT_MS = int(os.getenv("INFERENCE_RATE_LIMIT_MS", "0"))
 
 
 def configure_logging() -> None:
@@ -61,6 +66,10 @@ def main() -> None:
         broker_url=kafka_settings.broker_url,
         topic=kafka_settings.topics_alerts,
     )
+    circuit_breaker = CircuitBreaker(
+        failure_threshold=INFERENCE_FAILURE_THRESHOLD,
+        cooldown_seconds=INFERENCE_COOLDOWN_SECONDS,
+    )
 
     model_info = api_client.fetch_model_info()
     deployment_id: int = model_info["deployment_id"]
@@ -81,46 +90,59 @@ def main() -> None:
             if message is None:
                 continue
 
-            try:
-                prediction = api_client.predict(message)
-            except Exception as exc:
-                logger.error(
-                    "Prediction failed for transaction %s: %s",
-                    message.get("transaction_id"),
-                    exc,
+            if circuit_breaker.is_open():
+                logger.warning(
+                    "Circuit breaker OPEN — skipping transaction %s",
+                    message["transaction_id"],
                 )
                 continue
 
-            publisher.publish(
-                transaction_id=prediction["transaction_id"],
-                prediction_score=prediction["prediction_score"],
-                prediction_label=prediction["prediction_label"],
-                model_version_id=deployment_id,
-                latency_ms=prediction["latency_ms"],
-            )
+            try:
+                prediction = api_client.predict(message)
 
-            if prediction["prediction_label"]:
-                severity = _classify_severity(prediction["prediction_score"])
-                try:
-                    alert_publisher.publish(
-                        transaction_id=message["transaction_id"],
-                        prediction_score=prediction["prediction_score"],
-                        severity=severity,
-                    )
-                    logger.info(
-                        "Fraud alert published: transaction_id=%s score=%.4f severity=%s",
-                        message["transaction_id"],
-                        prediction["prediction_score"],
-                        severity,
-                    )
-                except Exception as exc:
-                    logger.error(
-                        "Failed to publish fraud alert for transaction %s: %s",
-                        message["transaction_id"],
-                        exc,
-                    )
+                publisher.publish(
+                    transaction_id=prediction["transaction_id"],
+                    prediction_score=prediction["prediction_score"],
+                    prediction_label=prediction["prediction_label"],
+                    model_version_id=deployment_id,
+                    latency_ms=prediction["latency_ms"],
+                )
 
-            consumer.commit()
+                if prediction["prediction_label"]:
+                    severity = _classify_severity(prediction["prediction_score"])
+                    try:
+                        alert_publisher.publish(
+                            transaction_id=message["transaction_id"],
+                            prediction_score=prediction["prediction_score"],
+                            severity=severity,
+                        )
+                        logger.info(
+                            "Fraud alert published: transaction_id=%s score=%.4f severity=%s",
+                            message["transaction_id"],
+                            prediction["prediction_score"],
+                            severity,
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            "Failed to publish fraud alert for transaction %s: %s",
+                            message["transaction_id"],
+                            exc,
+                        )
+
+                circuit_breaker.record_success()
+                consumer.commit()
+
+                if INFERENCE_RATE_LIMIT_MS > 0:
+                    time.sleep(INFERENCE_RATE_LIMIT_MS / 1000)
+
+            except Exception as exc:
+                circuit_breaker.record_failure()
+                logger.error(
+                    "Inference failed for %s (circuit=%s): %s",
+                    message["transaction_id"],
+                    circuit_breaker.state(),
+                    exc,
+                )
     finally:
         alert_publisher.close()
         publisher.close()
