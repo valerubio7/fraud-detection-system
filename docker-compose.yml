@@ -319,6 +319,8 @@ services:
       AIRFLOW_CONN_TIMESCALEDB_DEFAULT: "postgresql+psycopg2://${TIMESCALE_USER}:${TIMESCALE_PASSWORD}@timescaledb:5432/${TIMESCALE_DB}"
       AIRFLOW_CONN_POSTGRES_DEFAULT: "postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/${POSTGRES_DB}"
       AIRFLOW_CONN_MLFLOW_DEFAULT: "http://mlflow:5000"
+      # MIN_TRANSACTIONS_PER_HOUR: "10"   # data_quality_check: umbral mínimo de transacciones/hora
+      # MIN_PREDICTIONS_PER_HOUR: "5"     # data_quality_check: umbral mínimo de predicciones/hora
     command: ["airflow", "scheduler"]
     volumes:
       - ./mlops/airflow/dags:/opt/airflow/dags
