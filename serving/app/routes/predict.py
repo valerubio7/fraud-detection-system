@@ -22,6 +22,11 @@ _log = logging.getLogger(__name__)
 def predict(req: TransactionRequest, request: Request) -> PredictionResponse:
     model_loader = request.app.state.model_loader
     prediction_store = request.app.state.prediction_store
+    cache = request.app.state.prediction_cache
+
+    cached = cache.get(req.transaction_id)
+    if cached is not None:
+        return PredictionResponse(**cached)
 
     raw = {
         "amount": req.amount,
@@ -63,13 +68,15 @@ def predict(req: TransactionRequest, request: Request) -> PredictionResponse:
     else:
         _log.info(json.dumps(log_payload))
 
-    return PredictionResponse(
+    response = PredictionResponse(
         transaction_id=req.transaction_id,
         prediction_score=prediction_score,
         prediction_label=prediction_label,
         model_version=model_loader.model_version,
         latency_ms=feature_ms + inference_ms,
     )
+    cache.set(req.transaction_id, response.model_dump())
+    return response
 
 
 @router.post("/predict/batch", response_model=BatchPredictionResponse)

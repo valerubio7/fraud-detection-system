@@ -3,8 +3,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 
+import config
+
 from .routes.health import router as health_router
 from .routes.predict import router as predict_router
+from .services.cache import PredictionCache
 from .services.model_loader import ModelLoader
 from .services.prediction_store import PredictionStore
 
@@ -15,6 +18,9 @@ async def lifespan(app: FastAPI):
     loader.load()
     app.state.model_loader = loader
     app.state.prediction_store = PredictionStore(loader.deployment_id)
+    app.state.prediction_cache = PredictionCache(
+        config.redis_settings.host, config.redis_settings.port
+    )
     yield
 
 

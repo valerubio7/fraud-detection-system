@@ -5,12 +5,10 @@ from pathlib import Path
 
 import joblib
 import numpy as np
-import pandas as pd
 import psycopg2
 from mlflow.tracking import MlflowClient
 
 import config
-from model.selected_features import SELECTED_FEATURES
 
 _ARTIFACTS_DIR = Path("/tmp/fraud_model/artifacts/model")
 
@@ -19,6 +17,10 @@ class ModelLoader:
     def __init__(self) -> None:
         self._model = None
         self._encoder = None
+        self._mc_map: dict[str, float] = {}
+        self._mc_global: float = 0.0
+        self._country_map: dict[str, float] = {}
+        self._country_global: float = 0.0
         self.model_name: str | None = None
         self.model_version: str | None = None
         self.model_stage: str | None = None
@@ -42,6 +44,11 @@ class ModelLoader:
         client.download_artifacts(version.run_id, "", dst_path="/tmp/fraud_model")
         self._model = joblib.load(_ARTIFACTS_DIR / "xgboost_model.joblib")
         self._encoder = joblib.load(_ARTIFACTS_DIR / "categorical_encoder.joblib")
+
+        self._mc_map = self._encoder._merchant_category_enc.mapping_
+        self._mc_global = self._encoder._merchant_category_enc.global_mean_
+        self._country_map = self._encoder._country_enc.mapping_
+        self._country_global = self._encoder._country_enc.global_mean_
 
         pg = config.postgres_settings
         conn = psycopg2.connect(
@@ -70,29 +77,29 @@ class ModelLoader:
         self.loaded_at = datetime.now(UTC)
 
     def prepare_features(self, raw: dict, window_features: dict[str, float]) -> np.ndarray:
-        log_amount = np.log1p(raw["amount"])
-        hour_of_day = raw["timestamp"].hour
-        day_of_week = raw["timestamp"].weekday()
+        mc_encoded = self._mc_map.get(str(raw["merchant_category"]), self._mc_global)
+        country_encoded = self._country_map.get(str(raw["country"]), self._country_global)
 
-        df = pd.DataFrame(
+        return np.array(
             [
-                {
-                    "merchant_category": raw["merchant_category"],
-                    "country": raw["country"],
-                    "device_type": raw["device_type"],
-                }
-            ]
+                [
+                    np.log1p(raw["amount"]),
+                    raw["timestamp"].hour,
+                    raw["timestamp"].weekday(),
+                    mc_encoded,
+                    country_encoded,
+                    window_features["tx_count_1h"],
+                    window_features["tx_count_24h"],
+                    window_features["tx_count_7d"],
+                    window_features["amount_sum_1h"],
+                    window_features["amount_sum_24h"],
+                    window_features["seconds_since_last_tx"],
+                    window_features["amount_ratio_vs_user_avg"],
+                    window_features["is_country_new"],
+                    window_features["distinct_countries_seen"],
+                    window_features["is_merchant_new"],
+                    window_features["distinct_merchants_seen"],
+                ]
+            ],
+            dtype=np.float64,
         )
-        encoded = self._encoder.transform(df)
-
-        features: dict[str, float] = {
-            "log_amount": log_amount,
-            "hour_of_day": hour_of_day,
-            "day_of_week": day_of_week,
-            "merchant_category_encoded": encoded["merchant_category_encoded"].iloc[0],
-            "country_encoded": encoded["country_encoded"].iloc[0],
-            **window_features,
-        }
-
-        values = [features[f] for f in SELECTED_FEATURES]
-        return np.array(values, dtype=np.float64).reshape(1, -1)
