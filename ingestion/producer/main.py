@@ -1,5 +1,3 @@
-"""Entry point for the transaction producer modes."""
-
 from __future__ import annotations
 
 import argparse
@@ -15,11 +13,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import UUID
+
+from ingestion.models import Transaction
 
 from .generator import FraudPatternGenerator, LegitimateTransactionGenerator, UserProfile
 from .kafka_producer import TransactionProducer
-from .models import Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +34,6 @@ FRAUD_PATTERNS = [
 
 @dataclass
 class ProducerStats:
-    """Track producer statistics for reporting."""
-
     started_at: float
     total: int = 0
     legitimate: int = 0
@@ -46,8 +42,6 @@ class ProducerStats:
 
 
 class StopEvent:
-    """Simple signal-aware stop flag."""
-
     def __init__(self) -> None:
         self._stop = False
 
@@ -136,41 +130,15 @@ def parse_args() -> argparse.Namespace:
         ],
         help="Escenario de fraude a inyectar",
     )
+    parser.add_argument("--tps", type=int, default=10, help="Transacciones por segundo (TPS)")
     parser.add_argument(
-        "--tps",
-        type=int,
-        default=10,
-        help="Transacciones por segundo (TPS)",
+        "--duration", type=int, default=0, help="Duracion en segundos (0 = infinito)"
     )
+    parser.add_argument("--fraud-rate", type=float, default=0.02, help="Tasa de fraude (0.0 a 1.0)")
+    parser.add_argument("--seed", type=int, default=42, help="Seed para reproducibilidad")
+    parser.add_argument("--num-users", type=int, default=200, help="Numero de usuarios a simular")
     parser.add_argument(
-        "--duration",
-        type=int,
-        default=0,
-        help="Duracion en segundos (0 = infinito)",
-    )
-    parser.add_argument(
-        "--fraud-rate",
-        type=float,
-        default=0.02,
-        help="Tasa de fraude (0.0 a 1.0)",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Seed para reproducibilidad",
-    )
-    parser.add_argument(
-        "--num-users",
-        type=int,
-        default=200,
-        help="Numero de usuarios a simular",
-    )
-    parser.add_argument(
-        "--num-merchants",
-        type=int,
-        default=50,
-        help="Numero de merchants disponibles",
+        "--num-merchants", type=int, default=50, help="Numero de merchants disponibles"
     )
 
     return parser.parse_args()
@@ -209,12 +177,9 @@ def parse_timestamp(raw_value: str) -> datetime:
         numeric_value = None
 
     if numeric_value is not None:
-        epoch_millis = int(numeric_value)
-        return datetime.fromtimestamp(epoch_millis / 1000, tz=UTC)
+        return datetime.fromtimestamp(int(numeric_value) / 1000, tz=UTC)
 
-    value = raw_value
-    if value.endswith("Z"):
-        value = f"{value[:-1]}+00:00"
+    value = raw_value if not raw_value.endswith("Z") else f"{raw_value[:-1]}+00:00"
     timestamp = datetime.fromisoformat(value)
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=UTC)
@@ -232,9 +197,7 @@ def parse_bool(raw_value: str | None) -> bool | None:
     return None
 
 
-def iter_replay_transactions(
-    csv_path: Path,
-) -> Iterable[tuple[Transaction, bool]]:
+def iter_replay_transactions(csv_path: Path) -> Iterable[tuple[Transaction, bool]]:
     with csv_path.open("r", encoding="utf-8") as file:
         reader = csv.DictReader(file)
         if reader.fieldnames is None:
@@ -246,7 +209,7 @@ def iter_replay_transactions(
 
         for row in reader:
             transaction = Transaction(
-                transaction_id=UUID(row["transaction_id"]),
+                transaction_id=row["transaction_id"],
                 user_id=row["user_id"],
                 merchant_id=row["merchant_id"],
                 merchant_category=row["merchant_category"],
@@ -271,12 +234,6 @@ def log_stats(stats: ProducerStats) -> None:
         stats.errors,
         tps,
     )
-
-
-def choose_user_profile(
-    rng: random.Random, generator: LegitimateTransactionGenerator
-) -> UserProfile:
-    return rng.choices(generator._users, weights=generator._user_weights, k=1)[0]
 
 
 def update_user_context(
@@ -333,7 +290,7 @@ def run_generative_mode(
         is_fraud = rng.random() < fraud_rate
         if is_fraud:
             pattern = next(pattern_cycle) if scenario is None or scenario == "mixed" else scenario
-            user_profile = choose_user_profile(rng, legit_generator)
+            user_profile = legit_generator.sample_user(rng)
             transactions = generate_fraud_transactions(
                 fraud_generator,
                 pattern,

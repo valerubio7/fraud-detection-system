@@ -12,11 +12,11 @@ from pathlib import Path
 from config import kafka_settings, redis_settings, timescaledb_settings
 
 from .feature_publisher import FeaturePublisher
-from .historical import HistoricalProfileStore
+from .historical_store import HistoricalProfileStore
 from .kafka_consumer import TransactionConsumer
 from .redis_store import RedisFeatureStore
 from .timescale_writer import TimescaleWriter
-from .windows import SEVEN_DAYS_SECONDS, SlidingWindowStore
+from .window_store import SEVEN_DAYS_SECONDS, SlidingWindowStore
 
 logger = logging.getLogger(__name__)
 

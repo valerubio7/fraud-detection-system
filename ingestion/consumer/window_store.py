@@ -5,8 +5,9 @@ from __future__ import annotations
 from collections import deque
 from datetime import datetime
 
-from .feature_models import WindowFeatures
-from .models import TransactionRaw
+from ingestion.models import Transaction
+
+from .features import WindowFeatures
 
 ONE_HOUR_SECONDS = 3600
 TWENTY_FOUR_HOURS_SECONDS = 24 * ONE_HOUR_SECONDS
@@ -20,16 +21,16 @@ class SlidingWindowStore:
         if max_window_seconds <= 0:
             raise ValueError("max_window_seconds must be positive")
         self._max_window_seconds = max_window_seconds
-        self._history: dict[str, deque[TransactionRaw]] = {}
+        self._history: dict[str, deque[Transaction]] = {}
 
-    def add(self, transaction: TransactionRaw) -> None:
+    def add(self, transaction: Transaction) -> None:
         """Add a transaction to the per-user history and evict old entries."""
 
         history = self._history.setdefault(transaction.user_id, deque())
         history.append(transaction)
         self._evict_old(history, transaction.timestamp)
 
-    def compute_features(self, transaction: TransactionRaw) -> WindowFeatures:
+    def compute_features(self, transaction: Transaction) -> WindowFeatures:
         """Compute sliding window features using history before this transaction."""
 
         history = self._history.get(transaction.user_id)
@@ -81,14 +82,14 @@ class SlidingWindowStore:
             seconds_since_last_tx=seconds_since_last_tx,
         )
 
-    def get_user_window(self, user_id: str) -> list[TransactionRaw]:
+    def get_user_window(self, user_id: str) -> list[Transaction]:
         """Return a copy of the current window transactions for a user."""
         history = self._history.get(user_id)
         return list(history) if history else []
 
     def hydrate(
         self,
-        transactions: list[TransactionRaw],
+        transactions: list[Transaction],
         reference_time: datetime,
         max_window_seconds: int,
     ) -> None:
@@ -105,7 +106,7 @@ class SlidingWindowStore:
         for transaction in valid:
             self.add(transaction)
 
-    def _evict_old(self, history: deque[TransactionRaw], reference_time: datetime) -> None:
+    def _evict_old(self, history: deque[Transaction], reference_time: datetime) -> None:
         cutoff = reference_time.timestamp() - self._max_window_seconds
         while history and history[0].timestamp.timestamp() < cutoff:
             history.popleft()

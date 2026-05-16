@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .feature_models import HistoricalFeatures
-from .models import TransactionRaw
+from ingestion.models import Transaction
+
+from .features import HistoricalFeatures
 
 
 @dataclass
@@ -23,7 +24,7 @@ class HistoricalProfileStore:
     def __init__(self) -> None:
         self._profiles: dict[str, _UserProfile] = {}
 
-    def compute_features(self, transaction: TransactionRaw) -> HistoricalFeatures:
+    def compute_features(self, transaction: Transaction) -> HistoricalFeatures:
         """Compute historical features using state before this transaction."""
 
         profile = self._profiles.get(transaction.user_id)
@@ -48,7 +49,7 @@ class HistoricalProfileStore:
             distinct_merchants_seen=len(merchants_seen),
         )
 
-    def update(self, transaction: TransactionRaw) -> None:
+    def update(self, transaction: Transaction) -> None:
         """Update the historical aggregates with this transaction."""
 
         profile = self._profiles.get(transaction.user_id)

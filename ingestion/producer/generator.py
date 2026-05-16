@@ -1,5 +1,3 @@
-"""Generators for legitimate transaction events."""
-
 from __future__ import annotations
 
 import hashlib
@@ -11,7 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from .models import Transaction
+from ingestion.models import Transaction
 
 MERCHANT_CATEGORIES = [
     "retail",
@@ -75,8 +73,6 @@ class UserProfile:
 
 
 def build_country_weights() -> tuple[list[str], list[float]]:
-    """Return countries and weights aligned with the reference distribution."""
-
     other_weight = (1.0 - sum(MAIN_WEIGHTS)) / len(OTHER_COUNTRIES)
     countries = MAIN_COUNTRIES + OTHER_COUNTRIES
     weights = MAIN_WEIGHTS + [other_weight] * len(OTHER_COUNTRIES)
@@ -84,8 +80,6 @@ def build_country_weights() -> tuple[list[str], list[float]]:
 
 
 def build_hour_weights() -> list[float]:
-    """Return hour weights for realistic daily activity."""
-
     weights = []
     for hour in range(24):
         if 0 <= hour <= 6:
@@ -108,8 +102,6 @@ def build_hour_weights() -> list[float]:
 
 
 def build_merchants(rng: random.Random, count: int) -> tuple[list[str], dict[str, str]]:
-    """Return merchant ids and their categories."""
-
     merchant_ids: list[str] = []
     merchant_categories: dict[str, str] = {}
     for idx in range(1, count + 1):
@@ -122,8 +114,6 @@ def build_merchants(rng: random.Random, count: int) -> tuple[list[str], dict[str
 
 
 def clamp(value: float, minimum: float, maximum: float) -> float:
-    """Clamp a float between minimum and maximum bounds."""
-
     return max(minimum, min(maximum, value))
 
 
@@ -133,8 +123,6 @@ def generate_timestamp(
     hour_weights: list[float],
     days_back: int,
 ) -> datetime:
-    """Generate a timestamp within the configured window using hour weights."""
-
     day_offset = rng.randint(0, days_back - 1)
     base = reference_time - timedelta(days=day_offset)
     hour = rng.choices(range(24), weights=hour_weights, k=1)[0]
@@ -144,8 +132,6 @@ def generate_timestamp(
 
 
 def generate_ip_hash(rng: random.Random) -> str:
-    """Generate a deterministic hash from a random IP address."""
-
     ip_address = ".".join(str(rng.randint(1, 255)) for _ in range(4))
     return hashlib.sha256(ip_address.encode("utf-8")).hexdigest()
 
@@ -157,8 +143,6 @@ def generate_amount(
     category_medians: dict[str, float],
     category_sigma: dict[str, float],
 ) -> float:
-    """Generate a log-normal amount adjusted by a user multiplier."""
-
     median = category_medians.get(category, 50.0)
     sigma = category_sigma.get(category, 0.5)
     mu = math.log(median)
@@ -172,16 +156,12 @@ def choose_country(
     countries: list[str],
     country_weights: list[float],
 ) -> str:
-    """Choose a country with a strong bias toward the user's home."""
-
     if rng.random() < 0.85:
         return home_country
     return rng.choices(countries, weights=country_weights, k=1)[0]
 
 
 def choose_device(rng: random.Random, preferred_device: str) -> str:
-    """Choose a device with a strong bias toward the preferred one."""
-
     if rng.random() < 0.8:
         return preferred_device
     alternatives = [device for device in DEVICE_TYPES if device != preferred_device]
@@ -191,8 +171,6 @@ def choose_device(rng: random.Random, preferred_device: str) -> str:
 def choose_merchant(
     rng: random.Random, frequent_merchants: list[str], merchant_ids: list[str]
 ) -> str:
-    """Choose a merchant, favoring the user's frequent list."""
-
     if rng.random() < 0.8:
         return rng.choice(frequent_merchants)
     return rng.choice(merchant_ids)
@@ -229,24 +207,42 @@ class LegitimateTransactionGenerator:
         self._category_sigma = {**CATEGORY_SIGMA, **(category_sigma or {})}
         self._reference_time = datetime.now(UTC)
 
-        self._merchant_ids, self._merchant_categories = build_merchants(self._rng, merchant_count)
-        self._countries, self._country_weights = build_country_weights()
-        self._hour_weights = build_hour_weights()
-        self._users = self.generate_user_profiles()
-        self._user_weights = [user.activity_weight for user in self._users]
+        self.merchant_ids, self.merchant_categories = build_merchants(self._rng, merchant_count)
+        self.countries, self.country_weights = build_country_weights()
+        self.hour_weights = build_hour_weights()
+        self.users = self._build_user_profiles()
+        self.user_weights = [user.activity_weight for user in self.users]
         self._session_cache: dict[tuple[str, datetime], str] = {}
 
-    def generate_user_profiles(self) -> list[UserProfile]:
-        """Create user profiles with stable spending behavior and preferences."""
+    @property
+    def days_back(self) -> int:
+        return self._days_back
 
+    @property
+    def reference_time(self) -> datetime:
+        return self._reference_time
+
+    @property
+    def category_medians(self) -> dict[str, float]:
+        return self._category_medians
+
+    @property
+    def category_sigma(self) -> dict[str, float]:
+        return self._category_sigma
+
+    def sample_user(self, rng: random.Random) -> UserProfile:
+        """Sample a user profile using the given RNG and activity weights."""
+        return rng.choices(self.users, weights=self.user_weights, k=1)[0]
+
+    def _build_user_profiles(self) -> list[UserProfile]:
         users: list[UserProfile] = []
         for idx in range(1, self._user_count + 1):
             user_id = f"user_{idx:04d}"
-            home_country = self._rng.choices(self._countries, weights=self._country_weights, k=1)[0]
+            home_country = self._rng.choices(self.countries, weights=self.country_weights, k=1)[0]
             preferred_device = self._rng.choices(DEVICE_TYPES, weights=DEVICE_WEIGHTS, k=1)[0]
             spend_multiplier = clamp(self._rng.lognormvariate(0.0, 0.4), 0.4, 2.5)
             activity_weight = clamp(self._rng.lognormvariate(0.0, 0.6), 0.2, 3.0)
-            frequent_merchants = self._rng.sample(self._merchant_ids, k=5)
+            frequent_merchants = self._rng.sample(self.merchant_ids, k=5)
             users.append(
                 UserProfile(
                     user_id=user_id,
@@ -262,9 +258,9 @@ class LegitimateTransactionGenerator:
     def generate_transaction(self) -> Transaction:
         """Generate a single legitimate transaction event."""
 
-        user = self._rng.choices(self._users, weights=self._user_weights, k=1)[0]
-        merchant_id = choose_merchant(self._rng, user.frequent_merchants, self._merchant_ids)
-        merchant_category = self._merchant_categories[merchant_id]
+        user = self._rng.choices(self.users, weights=self.user_weights, k=1)[0]
+        merchant_id = choose_merchant(self._rng, user.frequent_merchants, self.merchant_ids)
+        merchant_category = self.merchant_categories[merchant_id]
         amount = generate_amount(
             self._rng,
             merchant_category,
@@ -272,17 +268,15 @@ class LegitimateTransactionGenerator:
             self._category_medians,
             self._category_sigma,
         )
-        country = choose_country(
-            self._rng, user.home_country, self._countries, self._country_weights
-        )
+        country = choose_country(self._rng, user.home_country, self.countries, self.country_weights)
         device_type = choose_device(self._rng, user.preferred_device)
         timestamp = generate_timestamp(
-            self._rng, self._reference_time, self._hour_weights, self._days_back
+            self._rng, self._reference_time, self.hour_weights, self._days_back
         )
-        ip_hash = self._get_session_ip_hash(user.user_id, timestamp)
+        ip_hash = self.get_session_ip_hash(user.user_id, timestamp)
 
         return Transaction(
-            transaction_id=self._generate_transaction_id(),
+            transaction_id=self._new_transaction_id(),
             user_id=user.user_id,
             merchant_id=merchant_id,
             merchant_category=merchant_category,
@@ -300,10 +294,8 @@ class LegitimateTransactionGenerator:
             raise ValueError("count must be non-negative")
         return [self.generate_transaction() for _ in range(count)]
 
-    def _generate_transaction_id(self) -> UUID:
-        return UUID(int=self._rng.getrandbits(128), version=4)
-
-    def _get_session_ip_hash(self, user_id: str, timestamp: datetime) -> str:
+    def get_session_ip_hash(self, user_id: str, timestamp: datetime) -> str:
+        """Return a stable IP hash for the session bucket containing this timestamp."""
         session_start = self._get_session_start(timestamp)
         cache_key = (user_id, session_start)
         cached = self._session_cache.get(cache_key)
@@ -312,6 +304,9 @@ class LegitimateTransactionGenerator:
         ip_hash = generate_ip_hash(self._rng)
         self._session_cache[cache_key] = ip_hash
         return ip_hash
+
+    def _new_transaction_id(self) -> str:
+        return str(UUID(int=self._rng.getrandbits(128), version=4))
 
     def _get_session_start(self, timestamp: datetime) -> datetime:
         total_minutes = timestamp.hour * 60 + timestamp.minute
@@ -345,22 +340,12 @@ class FraudPatternGenerator:
         unknown_merchant_amount_range: tuple[float, float] = UNKNOWN_MERCHANT_HIGH_AMOUNT_RANGE,
     ) -> None:
         self._rng = random.Random(seed)
-        self._legit_generator = legit_generator
+        self._legit = legit_generator
         self._amount_multiplier_range = amount_multiplier_range
         self._amount_baseline_min = amount_baseline_min
         self._high_frequency_range = high_frequency_range
         self._high_frequency_window_minutes = high_frequency_window_minutes
         self._unknown_merchant_amount_range = unknown_merchant_amount_range
-
-        self._merchant_ids = legit_generator._merchant_ids
-        self._merchant_categories = legit_generator._merchant_categories
-        self._countries = legit_generator._countries
-        self._country_weights = legit_generator._country_weights
-        self._hour_weights = legit_generator._hour_weights
-        self._category_medians = legit_generator._category_medians
-        self._category_sigma = legit_generator._category_sigma
-        self._days_back = legit_generator._days_back
-        self._reference_time = legit_generator._reference_time
 
         self._user_totals: defaultdict[str, float] = defaultdict(float)
         self._user_counts: defaultdict[str, int] = defaultdict(int)
@@ -384,14 +369,14 @@ class FraudPatternGenerator:
         base_transaction = self._build_transaction(user_profile)
         avg_amount = self._calculate_average_amount(user_profile.user_id, transaction_history)
         if avg_amount is None:
-            median = self._category_medians.get(base_transaction.merchant_category, 50.0)
+            median = self._legit.category_medians.get(base_transaction.merchant_category, 50.0)
             avg_amount = max(self._amount_baseline_min, median * user_profile.spend_multiplier)
 
         multiplier = self._rng.uniform(*self._amount_multiplier_range)
         amount = round(max(avg_amount * multiplier, self._amount_baseline_min), 2)
 
         transaction = Transaction(
-            transaction_id=self._generate_transaction_id(),
+            transaction_id=self._new_transaction_id(),
             user_id=base_transaction.user_id,
             merchant_id=base_transaction.merchant_id,
             merchant_category=base_transaction.merchant_category,
@@ -421,7 +406,7 @@ class FraudPatternGenerator:
         min_count, max_count = self._high_frequency_range
         burst_size = max(min_count, min(max_count, count))
         base_time = generate_timestamp(
-            self._rng, self._reference_time, self._hour_weights, self._days_back
+            self._rng, self._legit.reference_time, self._legit.hour_weights, self._legit.days_back
         )
         timestamps = sorted(
             base_time
@@ -431,21 +416,24 @@ class FraudPatternGenerator:
         )
 
         transactions: list[Transaction] = []
-        merchant_pool = list(self._merchant_ids)
+        merchant_pool = list(self._legit.merchant_ids)
         self._rng.shuffle(merchant_pool)
         for idx, timestamp in enumerate(timestamps):
             merchant_id = merchant_pool[idx % len(merchant_pool)]
-            merchant_category = self._merchant_categories[merchant_id]
+            merchant_category = self._legit.merchant_categories[merchant_id]
             amount = generate_amount(
                 self._rng,
                 merchant_category,
                 user_profile.spend_multiplier,
-                self._category_medians,
-                self._category_sigma,
+                self._legit.category_medians,
+                self._legit.category_sigma,
             )
             device_type = choose_device(self._rng, user_profile.preferred_device)
             country = choose_country(
-                self._rng, user_profile.home_country, self._countries, self._country_weights
+                self._rng,
+                user_profile.home_country,
+                self._legit.countries,
+                self._legit.country_weights,
             )
             transaction = self._build_transaction(
                 user_profile,
@@ -468,14 +456,14 @@ class FraudPatternGenerator:
 
         seen_merchants = self._resolve_merchants_used(user_profile.user_id, merchants_used)
         excluded = seen_merchants | set(user_profile.frequent_merchants)
-        candidates = list(set(self._merchant_ids) - excluded)
+        candidates = list(set(self._legit.merchant_ids) - excluded)
         if not candidates:
-            candidates = list(set(self._merchant_ids) - set(user_profile.frequent_merchants))
+            candidates = list(set(self._legit.merchant_ids) - set(user_profile.frequent_merchants))
         if not candidates:
-            candidates = list(self._merchant_ids)
+            candidates = list(self._legit.merchant_ids)
 
         merchant_id = self._rng.choice(candidates)
-        merchant_category = self._merchant_categories[merchant_id]
+        merchant_category = self._legit.merchant_categories[merchant_id]
         amount = round(self._rng.uniform(*self._unknown_merchant_amount_range), 2)
         transaction = self._build_transaction(
             user_profile,
@@ -499,33 +487,39 @@ class FraudPatternGenerator:
     ) -> Transaction:
         if merchant_id is None:
             merchant_id = choose_merchant(
-                self._rng, user_profile.frequent_merchants, self._merchant_ids
+                self._rng, user_profile.frequent_merchants, self._legit.merchant_ids
             )
         if merchant_category is None:
-            merchant_category = self._merchant_categories[merchant_id]
+            merchant_category = self._legit.merchant_categories[merchant_id]
         if amount is None:
             amount = generate_amount(
                 self._rng,
                 merchant_category,
                 user_profile.spend_multiplier,
-                self._category_medians,
-                self._category_sigma,
+                self._legit.category_medians,
+                self._legit.category_sigma,
             )
         if country is None:
             country = choose_country(
-                self._rng, user_profile.home_country, self._countries, self._country_weights
+                self._rng,
+                user_profile.home_country,
+                self._legit.countries,
+                self._legit.country_weights,
             )
         if device_type is None:
             device_type = choose_device(self._rng, user_profile.preferred_device)
         if timestamp is None:
             timestamp = generate_timestamp(
-                self._rng, self._reference_time, self._hour_weights, self._days_back
+                self._rng,
+                self._legit.reference_time,
+                self._legit.hour_weights,
+                self._legit.days_back,
             )
 
-        ip_hash = self._legit_generator._get_session_ip_hash(user_profile.user_id, timestamp)
+        ip_hash = self._legit.get_session_ip_hash(user_profile.user_id, timestamp)
 
         return Transaction(
-            transaction_id=self._generate_transaction_id(),
+            transaction_id=self._new_transaction_id(),
             user_id=user_profile.user_id,
             merchant_id=merchant_id,
             merchant_category=merchant_category,
@@ -574,19 +568,19 @@ class FraudPatternGenerator:
         visited = set(visited)
         visited.add(home_country)
         distant_candidates = self._get_distant_countries(home_country)
-        candidates = [country for country in distant_candidates if country not in visited]
+        candidates = [c for c in distant_candidates if c not in visited]
         if candidates:
             return self._rng.choice(candidates)
 
-        uncommon_candidates = [country for country in UNCOMMON_COUNTRIES if country not in visited]
+        uncommon_candidates = [c for c in UNCOMMON_COUNTRIES if c not in visited]
         if uncommon_candidates:
             return self._rng.choice(uncommon_candidates)
 
-        remaining = [country for country in self._countries if country not in visited]
+        remaining = [c for c in self._legit.countries if c not in visited]
         if remaining:
             return self._rng.choice(remaining)
 
-        fallback = [country for country in self._countries if country != home_country]
+        fallback = [c for c in self._legit.countries if c != home_country]
         if fallback:
             return self._rng.choice(fallback)
         return home_country
@@ -596,14 +590,14 @@ class FraudPatternGenerator:
             return set(NON_LATAM_COUNTRIES)
         if home_country in NON_LATAM_COUNTRIES:
             return set(LATAM_COUNTRIES)
-        return set(self._countries)
+        return set(self._legit.countries)
 
-    def _generate_transaction_id(self) -> UUID:
-        return UUID(int=self._rng.getrandbits(128), version=4)
+    def _new_transaction_id(self) -> str:
+        return str(UUID(int=self._rng.getrandbits(128), version=4))
 
     def _clamp_timestamp(self, timestamp: datetime) -> datetime:
-        if timestamp <= self._reference_time:
+        if timestamp <= self._legit.reference_time:
             return timestamp
-        return self._reference_time - timedelta(
+        return self._legit.reference_time - timedelta(
             minutes=self._rng.randint(0, self._high_frequency_window_minutes - 1)
         )

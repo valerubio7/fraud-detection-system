@@ -6,9 +6,12 @@ import logging
 from uuid import UUID
 
 import psycopg2
+import psycopg2.extras
 from psycopg2.pool import ThreadedConnectionPool
 
-from .models import TransactionRaw
+from ingestion.models import Transaction
+
+psycopg2.extras.register_uuid()
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +56,7 @@ class TimescaleWriter:
 
         return self._is_available
 
-    def write(self, transaction: TransactionRaw) -> None:
+    def write(self, transaction: Transaction) -> None:
         """Insert a transaction row into TimescaleDB."""
 
         if not self._is_available or self._pool is None:

@@ -1,5 +1,3 @@
-"""Kafka consumer for raw transaction events."""
-
 from __future__ import annotations
 
 import io
@@ -14,8 +12,7 @@ from confluent_kafka import Consumer, KafkaException, Message
 from fastavro import parse_schema, schemaless_reader
 
 from config import kafka_settings
-
-from .models import TransactionRaw
+from ingestion.models import Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -88,25 +85,14 @@ class TransactionConsumer:
 
     @staticmethod
     def _parse_timestamp(raw_value: Any) -> datetime:
+        # fastavro deserializes timestamp-millis logical type directly to datetime
+        if isinstance(raw_value, datetime):
+            return raw_value if raw_value.tzinfo is not None else raw_value.replace(tzinfo=UTC)
         try:
             timestamp_millis = float(raw_value)
         except (TypeError, ValueError) as exc:
             raise ValueError("Invalid timestamp value") from exc
-
         return datetime.fromtimestamp(timestamp_millis / 1000, tz=UTC)
-
-    def _build_transaction(self, payload: dict[str, Any]) -> TransactionRaw:
-        return TransactionRaw(
-            transaction_id=str(payload["transaction_id"]),
-            user_id=str(payload["user_id"]),
-            merchant_id=str(payload["merchant_id"]),
-            merchant_category=str(payload["merchant_category"]),
-            amount=float(payload["amount"]),
-            country=str(payload["country"]),
-            timestamp=self._parse_timestamp(payload["timestamp"]),
-            device_type=str(payload["device_type"]),
-            ip_hash=str(payload["ip_hash"]),
-        )
 
     def _handle_deserialization_failure(self, message: Message, exc: Exception) -> None:
         key = (message.partition(), message.offset())
@@ -133,8 +119,8 @@ class TransactionConsumer:
         )
         self._retry_queue.append(message)
 
-    def consume(self, timeout: float) -> TransactionRaw | None:
-        """Consume a single message and return a TransactionRaw if available."""
+    def consume(self, timeout: float) -> Transaction | None:
+        """Consume a single message and return a Transaction if available."""
 
         message = self._retry_queue.popleft() if self._retry_queue else self._poll_message(timeout)
         if message is None:
@@ -151,7 +137,7 @@ class TransactionConsumer:
 
         try:
             data = self._deserialize(payload)
-            transaction = self._build_transaction(data)
+            transaction = Transaction.from_dict(data, self._parse_timestamp(data["timestamp"]))
         except Exception as exc:
             self._handle_deserialization_failure(message, exc)
             return None

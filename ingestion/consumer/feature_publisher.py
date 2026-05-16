@@ -1,15 +1,13 @@
-"""Kafka publisher for transaction feature messages."""
-
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import UTC
 from typing import Any
 
-from ingestion.kafka_base import AvroKafkaProducer
+from ingestion.avro_producer import AvroKafkaProducer
+from ingestion.models import Transaction
+from ingestion.utils import ensure_utc
 
-from .feature_models import HistoricalFeatures, WindowFeatures
-from .models import TransactionRaw
+from .features import HistoricalFeatures, WindowFeatures
 
 
 class FeaturePublisher(AvroKafkaProducer):
@@ -36,7 +34,7 @@ class FeaturePublisher(AvroKafkaProducer):
 
     def publish(
         self,
-        transaction: TransactionRaw,
+        transaction: Transaction,
         window_features: WindowFeatures,
         historical_features: HistoricalFeatures,
     ) -> None:
@@ -56,15 +54,11 @@ class FeaturePublisher(AvroKafkaProducer):
 
     def _build_payload(
         self,
-        transaction: TransactionRaw,
+        transaction: Transaction,
         window_features: WindowFeatures,
         historical_features: HistoricalFeatures,
     ) -> dict[str, Any]:
-        timestamp = transaction.timestamp
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=UTC)
-        else:
-            timestamp = timestamp.astimezone(UTC)
+        timestamp = ensure_utc(transaction.timestamp)
         return {
             "transaction_id": transaction.transaction_id,
             "user_id": transaction.user_id,

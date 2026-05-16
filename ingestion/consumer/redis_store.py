@@ -1,5 +1,3 @@
-"""Redis-backed feature store for user state."""
-
 from __future__ import annotations
 
 import json
@@ -9,7 +7,8 @@ from typing import Any
 
 import redis
 
-from .models import TransactionRaw
+from ingestion.models import Transaction
+from ingestion.utils import ensure_utc
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +57,7 @@ class RedisFeatureStore:
     def save_user_state(
         self,
         user_id: str,
-        transactions: list[TransactionRaw],
+        transactions: list[Transaction],
         historical_profile: dict[str, Any],
     ) -> None:
         """Persist the latest user state to Redis."""
@@ -71,7 +70,7 @@ class RedisFeatureStore:
         historical_key = self._historical_key(user_id)
 
         trimmed = transactions[-MAX_WINDOW_TRANSACTIONS:]
-        window_payload = [self._serialize_transaction(transaction) for transaction in trimmed]
+        window_payload = [self._serialize_transaction(t) for t in trimmed]
 
         try:
             self._client.set(window_key, json.dumps(window_payload), ex=self._key_ttl_seconds)
@@ -83,7 +82,7 @@ class RedisFeatureStore:
         except redis.RedisError as exc:
             self._handle_redis_error("save", user_id, exc)
 
-    def load_user_window(self, user_id: str) -> list[TransactionRaw]:
+    def load_user_window(self, user_id: str) -> list[Transaction]:
         """Load the cached window transactions for a user."""
         raw = self._get_json(self._window_key(user_id), "load window", user_id)
         if raw is None:
@@ -91,7 +90,7 @@ class RedisFeatureStore:
         if not isinstance(raw, list):
             logger.error("Invalid window payload for user %s", user_id)
             return []
-        transactions: list[TransactionRaw] = []
+        transactions: list[Transaction] = []
         for item in raw:
             if not isinstance(item, dict):
                 continue
@@ -147,13 +146,7 @@ class RedisFeatureStore:
         return f"{HISTORICAL_KEY_PREFIX}:{user_id}"
 
     @staticmethod
-    def _serialize_transaction(transaction: TransactionRaw) -> dict[str, Any]:
-        timestamp = transaction.timestamp
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=UTC)
-        else:
-            timestamp = timestamp.astimezone(UTC)
-
+    def _serialize_transaction(transaction: Transaction) -> dict[str, Any]:
         return {
             "transaction_id": transaction.transaction_id,
             "user_id": transaction.user_id,
@@ -161,32 +154,22 @@ class RedisFeatureStore:
             "merchant_category": transaction.merchant_category,
             "amount": float(transaction.amount),
             "country": transaction.country,
-            "timestamp": timestamp.isoformat(),
+            "timestamp": ensure_utc(transaction.timestamp).isoformat(),
             "device_type": transaction.device_type,
             "ip_hash": transaction.ip_hash,
         }
 
     @staticmethod
-    def _deserialize_transaction(payload: dict[str, Any]) -> TransactionRaw:
-        return TransactionRaw(
-            transaction_id=str(payload["transaction_id"]),
-            user_id=str(payload["user_id"]),
-            merchant_id=str(payload["merchant_id"]),
-            merchant_category=str(payload["merchant_category"]),
-            amount=float(payload["amount"]),
-            country=str(payload["country"]),
-            timestamp=RedisFeatureStore._parse_timestamp(payload["timestamp"]),
-            device_type=str(payload["device_type"]),
-            ip_hash=str(payload["ip_hash"]),
+    def _deserialize_transaction(payload: dict[str, Any]) -> Transaction:
+        return Transaction.from_dict(
+            payload, RedisFeatureStore._parse_timestamp(payload["timestamp"])
         )
 
     @staticmethod
     def _parse_timestamp(value: Any) -> datetime:
         if not isinstance(value, str):
             raise ValueError("Timestamp must be a string")
-        text = value
-        if text.endswith("Z"):
-            text = f"{text[:-1]}+00:00"
+        text = value if not value.endswith("Z") else f"{value[:-1]}+00:00"
         timestamp = datetime.fromisoformat(text)
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)

@@ -1,12 +1,10 @@
-"""Kafka producer for transaction events."""
-
 from __future__ import annotations
 
 from typing import Any
 
-from ingestion.kafka_base import AvroKafkaProducer
-
-from .models import Transaction
+from ingestion.avro_producer import AvroKafkaProducer
+from ingestion.models import Transaction
+from ingestion.utils import ensure_utc
 
 
 class TransactionProducer(AvroKafkaProducer):
@@ -34,16 +32,15 @@ class TransactionProducer(AvroKafkaProducer):
     def send(self, transaction: Transaction) -> None:
         """Send a transaction to the Kafka topic."""
         self._produce(
-            str(transaction.transaction_id),
+            transaction.transaction_id,
             self._serialize_avro(self._transaction_to_dict(transaction)),
         )
 
-    def _transaction_to_dict(self, transaction: Transaction) -> dict[str, Any]:
-        timestamp = transaction.timestamp
-        if timestamp.tzinfo is None:
-            raise ValueError("Transaction timestamp must be timezone-aware")
+    @staticmethod
+    def _transaction_to_dict(transaction: Transaction) -> dict[str, Any]:
+        timestamp = ensure_utc(transaction.timestamp)
         return {
-            "transaction_id": str(transaction.transaction_id),
+            "transaction_id": transaction.transaction_id,
             "user_id": transaction.user_id,
             "merchant_id": transaction.merchant_id,
             "merchant_category": transaction.merchant_category,
