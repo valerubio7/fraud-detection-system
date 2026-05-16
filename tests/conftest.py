@@ -7,6 +7,15 @@ por lo que los imports al nivel de módulo en serving/ no fallan.
 import sys
 from unittest.mock import MagicMock
 
-for _mod in ["joblib", "mlflow", "mlflow.tracking", "psycopg2"]:
+for _mod in [
+    "joblib",
+    "mlflow",
+    "mlflow.tracking",
+    "psycopg2",
+    "asyncpg",
+    "redis",
+    "redis.exceptions",
+    "prometheus_fastapi_instrumentator",
+]:
     if _mod not in sys.modules:
         sys.modules[_mod] = MagicMock()

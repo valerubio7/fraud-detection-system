@@ -11,7 +11,8 @@ def health(request: Request) -> JSONResponse:
     loader = getattr(request.app.state, "model_loader", None)
     model_loaded = loader is not None and loader._model is not None
     status = "ok" if model_loaded else "degraded"
-    return JSONResponse({"status": status, "model_loaded": model_loaded}, status_code=200)
+    status_code = 200 if model_loaded else 503
+    return JSONResponse({"status": status, "model_loaded": model_loaded}, status_code=status_code)
 
 
 @router.get("/model/info")
