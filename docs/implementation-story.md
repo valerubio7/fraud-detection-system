@@ -298,3 +298,72 @@ Durante las pruebas end-to-end de la Fase 4 se realizaron los siguientes ajustes
 - **Extraccion de modulos del modelo**: funciones de evaluacion a `model/metrics.py`, de visualizacion a `model/plots.py`. `model/features.py` se renombro a `model/selected_features.py`. Se corrigio un bug en `select_features` donde `max_iter` era usado sin estar declarado como parametro.
 - **Seed simplificado**: se reemplazo `scripts/seed-timescale.sh` por el comando Docker documentado en `database/timescaledb/seeds/README.md`, corrigiendo ademas los nombres de variables de entorno y agregando `PYTHONPATH=/app`.
 - **Dependencias**: se agregaron `joblib`, `psycopg2-binary` y `pydantic-settings` al grupo `model` de `pyproject.toml`.
+
+## Fase 5: Serving e inference
+
+### 5.1 Estructura FastAPI y carga del modelo
+
+Se construyó el módulo `serving/` con FastAPI como framework de inferencia sincrónica. La aplicación se bootstrapea en `serving/app/main.py` con un lifecycle `lifespan` que:
+
+- Carga el modelo desde MLflow Registry vía `ModelLoader` en `serving/app/services/model_loader.py`. Conecta al tracking server, obtiene la última versión en `Production`, descarga artifacts a `/tmp/fraud_model/`, y carga `xgboost_model.joblib` y `categorical_encoder.joblib` con joblib.
+- Consulta en PostgreSQL el `deployment_id` activo desde `public.model_deployments`.
+- Inicializa un pool asyncpg con tamaño configurable por variable de entorno.
+- Inicializa `PredictionCache` contra Redis (degradación graceful si no está disponible).
+- Si el modelo no puede cargarse, el servicio arranca en modo **degraded** — el health check lo reporta y `/predict` devuelve 503.
+
+`ModelLoader.prepare_features(raw, window_features)` produce un array numpy de 16 features combinando datos crudos de la transacción (log1p del monto, hora y día de la semana, target encoding de merchant_category y country con fallback a media global) con las 11 features de ventana y perfil histórico recibidas del consumer upstream.
+
+### 5.2 Endpoints de predicción
+
+Se expusieron dos endpoints de inferencia en `serving/app/routes/predict.py`:
+
+- **`POST /predict`**: predicción individual. Recibe el payload de transacción completo incluyendo el mapa `features` con las ventanas computadas upstream. Antes de inferir verifica caché Redis por `transaction_id`. Si hay cache hit, devuelve la respuesta sin ejecutar el modelo. Calcula la latencia desglosada en `feature_ms` (preparación) e `inference_ms` (predict_proba). Persiste asincrónicamente con `BackgroundTasks` vía `PredictionStore`. Publica logs estructurados con alertas para requests lentas (umbral configurable).
+
+- **`POST /predict/batch`**: predicción batch (1 a 500 transacciones). Internamente prepara features individualmente, hace `np.vstack` para inferencia vectorizada con XGBoost, y persiste cada predicción individual con `BackgroundTasks`. Retorna latencia promedio por transacción y latencia total del batch.
+
+Los schemas Pydantic están en `serving/app/schemas/prediction.py`: `TransactionRequest`, `PredictionResponse`, `BatchPredictionRequest`, `BatchPredictionResponse`. Todos con validación (amount > 0, batch size entre 1 y 500).
+
+### 5.3 Persistencia y caché
+
+**PredictionStore** (`serving/app/services/prediction_store.py`): persiste cada predicción en `public.predictions_history` usando `asyncpg` con un pool de conexiones. Opera en modo fire-and-forget mediante `BackgroundTasks` de FastAPI para no bloquear la respuesta HTTP.
+
+**PredictionCache** (`serving/app/services/cache.py`): caché en Redis con socket_timeout de 100ms y TTL de 60s por clave (`prediction:<transaction_id>`). Si Redis no está disponible al iniciar, se degrada gracefulmente y desactiva la caché sin fallar. Los errores de Redis en runtime se loggean como warning.
+
+**Middleware de timing** (`serving/app/main.py`): agrega el header `X-Process-Time-Ms` a cada respuesta con la latencia total del request.
+
+### 5.4 Inference consumer: del stream a la API
+
+Se implementó un nuevo consumer en `ingestion/inference_consumer/` que cierra el loop online:
+
+**FeaturesConsumer** (`features_consumer.py`): consume mensajes Avro del topic `transactions.features`. Deserializa con fastavro, maneja errores con retry queue (un reintento por mensaje), y commit manual solo tras inferencia exitosa.
+
+**InferenceApiClient** (`api_client.py`): cliente HTTP sincrónico con httpx que llama a `POST /predict` de FastAPI. Timeout de 2s. Convierte UTC el timestamp antes de enviar.
+
+**CircuitBreaker** (`circuit_breaker.py`): breaker en memoria con tres estados (CLOSED → OPEN → HALF_OPEN). Abre tras 5 fallos consecutivos y reintenta tras 30s de cooldown. Cuando está OPEN, salta inferencia sin llamar a la API.
+
+**PredictionPublisher** (`prediction_publisher.py`): serializa en Avro el resultado de la predicción y lo publica en `transactions.predictions` usando `AvroKafkaProducer`.
+
+**AlertPublisher** (`alert_publisher.py`): cuando el label de predicción es positivo, clasifica la severidad (`CRITICAL` si score >= 0.90, `HIGH` si >= 0.75, `WARNING` en otro caso) y publica una alerta en `fraud.alerts`.
+
+**Orquestación** (`main.py`): loop principal que consume, infiere, publica predicción, publica alerta si corresponde, y commitea el offset. Todo con señales SIGINT/SIGTERM para shutdown graceful. Soporta rate limiting configurable entre requests.
+
+### 5.5 Endpoints de health y modelo
+
+En `serving/app/routes/health.py`:
+
+- **`GET /health`**: retorna siempre 200 con `{"status": "ok" | "degraded", "model_loaded": true | false}`. El estado `degraded` indica que FastAPI corre sin modelo cargado — el servicio igual responde en /health pero /predict devuelve 503.
+- **`GET /model/info`**: retorna metadata del modelo activo (nombre, versión, stage, deployment_id, fraud_score_threshold). Devuelve 503 si el modelo no está cargado.
+
+### 5.6 Ajustes operativos y Docker
+
+Se realizaron varios fixes para estabilizar el serving:
+
+- El healthcheck del contenedor Docker se simplificó a TCP connect en puerto 8000 para evitar dependencia del modelo.
+- El directorio `/tmp` se crea explícitamente antes de arrancar para que el proceso no-root pueda escribir artifacts.
+- `config.py` se agregó al COPY del Dockerfile de FastAPI para resolver imports.
+- El `feature_engineering/` completo se incluyó en la imagen de serving para que los encoders puedan aplicarse correctamente.
+- Se parametrizaron `min_size` y `max_size` del pool asyncpg, y `workers` de uvicorn, vía variables de entorno.
+
+### 5.7 Dependencias y documentación
+
+Se regeneró `uv.lock` con las nuevas dependencias: `asyncpg` y el grupo `inference` para el consumer. Se actualizó `docs/glossary.md` con los términos de serving e inference. Se documentó la arquitectura completa en `serving/README.md` con diagrama de flujo, ejemplos de request/response y descripción de cada servicio interno.
