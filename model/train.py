@@ -635,11 +635,24 @@ def main() -> None:
         client = MlflowClient()
         if model_info.registered_model_version is None:
             raise SystemExit("Failed to register model in MLflow Registry.")
+        registered_version = model_info.registered_model_version
         client.transition_model_version_stage(
             name=model_name,
-            version=model_info.registered_model_version,
+            version=registered_version,
             stage="Staging",
         )
+        client.update_model_version(
+            name=model_name,
+            version=registered_version,
+            description=(
+                f"Trained {datetime.now(UTC).strftime('%Y-%m-%d')}"
+                f" on {split_sizes['train']} samples. "
+                f"F1={test_metrics['f1_score']:.4f}"
+                f", AUC-ROC={test_metrics['roc_auc']:.4f}."
+            ),
+        )
+        client.set_model_version_tag(model_name, registered_version, "stage_lifecycle", "Staging")
+        client.set_model_version_tag(model_name, registered_version, "quality_gates", "pending")
         if tracking_uri is not None:
             run_url = f"{tracking_uri}/#/experiments/{experiment_id}/runs/{run_id}"
             print(f"MLflow run_id: {run_id}")

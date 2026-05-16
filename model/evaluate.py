@@ -114,6 +114,7 @@ def run_quality_gates(model_name: str, model_version: str) -> GateResult:
 
     _log_gate_metrics_to_mlflow(model_name, model_version, result)
     _print_gate_summary(result)
+    _update_quality_gate_tag(model_name, model_version, result)
     return result
 
 
@@ -215,6 +216,15 @@ def _load_model_from_uri(uri: str) -> object:
     if not hasattr(model, "n_classes_"):
         model.n_classes_ = 2
     return model
+
+
+def _update_quality_gate_tag(model_name: str, model_version: str, result: GateResult) -> None:
+    try:
+        client = MlflowClient()
+        tag_value = "passed" if result.passed else "failed"
+        client.set_model_version_tag(model_name, model_version, "quality_gates", tag_value)
+    except Exception as exc:
+        print(f"Warning: Failed to update quality_gates tag: {exc}")
 
 
 def _log_gate_metrics_to_mlflow(model_name: str, model_version: str, result: GateResult) -> None:

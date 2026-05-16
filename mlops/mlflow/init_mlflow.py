@@ -15,6 +15,7 @@ import urllib.error
 import urllib.request
 
 import mlflow
+from mlflow.exceptions import MlflowException
 from mlflow.tracking import MlflowClient
 
 EXPERIMENT_NAME = "fraud-detection-v1"
@@ -51,9 +52,34 @@ def wait_for_server(tracking_uri: str) -> None:
     sys.exit(1)
 
 
+MODEL_NAME = "FraudDetectionModel"
+
+
 def configure_experiment_tags(client: MlflowClient, experiment_id: str) -> None:
     for key, value in EXPERIMENT_TAGS.items():
         client.set_experiment_tag(experiment_id, key, value)
+
+
+def register_model_metadata(client: MlflowClient, model_name: str) -> None:
+    try:
+        client.update_registered_model(
+            name=model_name,
+            description=(
+                "XGBoost binary classifier for real-time fraud detection. "
+                "Trained on TimescaleDB transaction history with 16 engineered features. "
+                "Lifecycle: None → Staging (train.py)"
+                " → Production (promote.py after quality gates) → Archived."
+            ),
+        )
+        client.set_registered_model_tag(model_name, "task", "binary_classification")
+        client.set_registered_model_tag(model_name, "algorithm", "xgboost")
+        client.set_registered_model_tag(model_name, "input_features", "16")
+        client.set_registered_model_tag(
+            model_name, "feature_selection", "importance_threshold+correlation"
+        )
+        client.set_registered_model_tag(model_name, "serving_endpoint", "POST /predict")
+    except MlflowException:
+        print(f"WARNING: {model_name} not found in registry — run model/train.py first")
 
 
 def main() -> None:
@@ -76,6 +102,8 @@ def main() -> None:
         )
     configure_experiment_tags(client, experiment_id)
     print("Experiment tags configured.")
+
+    register_model_metadata(client, MODEL_NAME)
 
     print()
     print("=== MLflow inicializado ===")
