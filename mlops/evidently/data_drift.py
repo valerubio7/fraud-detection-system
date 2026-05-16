@@ -23,11 +23,11 @@ class DataDriftResult:
     feature_results: dict[str, FeatureDriftResult] = field(default_factory=dict)
 
 
-def run_data_drift_report(
+def _build_and_run_report(
     reference_df: pd.DataFrame,
     current_df: pd.DataFrame,
     columns: list[str],
-) -> DataDriftResult:
+) -> tuple[DataDriftResult, object]:
     from evidently.metric_preset import DataDriftPreset
     from evidently.report import Report
 
@@ -66,9 +66,30 @@ def run_data_drift_report(
 
     drifted_features = [name for name, fr in feature_results.items() if fr.drift_detected]
 
-    return DataDriftResult(
+    result = DataDriftResult(
         dataset_drift=dataset_drift,
         drift_share=drift_share,
         drifted_features=drifted_features,
         feature_results=feature_results,
     )
+    return result, report
+
+
+def run_data_drift_report(
+    reference_df: pd.DataFrame,
+    current_df: pd.DataFrame,
+    columns: list[str],
+) -> DataDriftResult:
+    result, _ = _build_and_run_report(reference_df, current_df, columns)
+    return result
+
+
+def run_data_drift_report_with_html(
+    reference_df: pd.DataFrame,
+    current_df: pd.DataFrame,
+    columns: list[str],
+    html_path: str = "/tmp/data_drift_report.html",
+) -> tuple[DataDriftResult, str]:
+    result, report = _build_and_run_report(reference_df, current_df, columns)
+    report.save_html(html_path)
+    return result, html_path

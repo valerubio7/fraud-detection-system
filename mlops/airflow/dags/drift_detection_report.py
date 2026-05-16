@@ -169,6 +169,30 @@ def drift_detection_report() -> None:
         }
 
     @task
+    def export_html_reports(deployment: dict, report_id: int) -> dict:
+        import pandas as pd
+        from mlflow.tracking import MlflowClient
+
+        import config
+        from mlops.evidently.data_drift import run_data_drift_report_with_html
+        from mlops.evidently.html_exporter import upload_report_to_mlflow
+        from model.selected_features import SELECTED_FEATURES
+
+        ref_df = pd.read_parquet(REFERENCE_PARQUET)
+        cur_df = pd.read_parquet(PRODUCTION_PARQUET)
+        _, html_path = run_data_drift_report_with_html(ref_df, cur_df, SELECTED_FEATURES)
+
+        client = MlflowClient(tracking_uri=config.mlflow_settings.tracking_uri)
+        mv = client.get_model_version(deployment["model_name"], deployment["model_version"])
+        artifact_uri = upload_report_to_mlflow(
+            run_id=mv.run_id,
+            html_path=html_path,
+            artifact_subfolder=f"drift_reports/report_{report_id}",
+            tracking_uri=config.mlflow_settings.tracking_uri,
+        )
+        return {"artifact_uri": artifact_uri, "report_id": report_id}
+
+    @task
     def save_report_to_postgresql(deployment: dict, data_drift: dict, model_drift: dict) -> int:
         import config
         from mlops.evidently.drift_store import DriftReportStore
@@ -213,8 +237,9 @@ def drift_detection_report() -> None:
     prod_feat >> run_drift
     model_drift_result = run_model_drift_task(active)
 
-    # Persist both results
-    save_report_to_postgresql(active, XComArg(run_drift), model_drift_result)
+    # Persist both results, luego exportar HTML a MLflow
+    report_id = save_report_to_postgresql(active, XComArg(run_drift), model_drift_result)
+    export_html_reports(active, report_id)
 
 
 drift_detection_report()
