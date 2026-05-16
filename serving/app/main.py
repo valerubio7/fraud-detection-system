@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from .routes.predict import router as predict_router
 from .services.model_loader import ModelLoader
 
 
@@ -20,6 +21,8 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
+app.include_router(predict_router)
 
 
 @app.get("/health")
