@@ -15,10 +15,19 @@ import urllib.error
 import urllib.request
 
 import mlflow
+from mlflow.tracking import MlflowClient
 
 EXPERIMENT_NAME = "fraud-detection-v1"
 MAX_RETRIES = 5
 RETRY_INTERVAL = 3  # segundos
+
+EXPERIMENT_TAGS = {
+    "project": "fraud-detection-mlops",
+    "team": "mlops",
+    "data_version": "v1",
+    "model_algorithm": "xgboost",
+    "task": "binary_classification",
+}
 
 
 def wait_for_server(tracking_uri: str) -> None:
@@ -42,15 +51,9 @@ def wait_for_server(tracking_uri: str) -> None:
     sys.exit(1)
 
 
-def ensure_experiment(name: str) -> str:
-    experiment = mlflow.get_experiment_by_name(name)
-    if experiment is not None:
-        print(f"Experiment '{name}' already exists — skipping creation.")
-        return experiment.experiment_id
-
-    experiment_id = mlflow.create_experiment(name)
-    print(f"Experimento '{name}' creado con ID {experiment_id}.")
-    return experiment_id
+def configure_experiment_tags(client: MlflowClient, experiment_id: str) -> None:
+    for key, value in EXPERIMENT_TAGS.items():
+        client.set_experiment_tag(experiment_id, key, value)
 
 
 def main() -> None:
@@ -60,7 +63,19 @@ def main() -> None:
     print(f"Conectando a MLflow en {tracking_uri}...")
     wait_for_server(tracking_uri)
 
-    experiment_id = ensure_experiment(EXPERIMENT_NAME)
+    client = MlflowClient(tracking_uri=tracking_uri)
+    experiment = mlflow.get_experiment_by_name(EXPERIMENT_NAME)
+    if experiment is None:
+        experiment_id = mlflow.create_experiment(EXPERIMENT_NAME)
+        print(f"Created experiment '{EXPERIMENT_NAME}' (id={experiment_id})")
+    else:
+        experiment_id = experiment.experiment_id
+        print(
+            f"Experiment '{EXPERIMENT_NAME}' already exists"
+            f" (id={experiment_id}) — skipping creation."
+        )
+    configure_experiment_tags(client, experiment_id)
+    print("Experiment tags configured.")
 
     print()
     print("=== MLflow inicializado ===")

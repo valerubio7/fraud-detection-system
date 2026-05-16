@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import socket
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -281,13 +282,37 @@ def start_mlflow_run(
     try:
         mlflow_settings = config.mlflow_settings
         tracking_uri = mlflow_settings.tracking_uri
+        experiment_name = mlflow_settings.experiment_name
         if not is_tracking_uri_available(tracking_uri):
             raise RuntimeError(f"MLflow tracking unavailable at {tracking_uri}")
         mlflow.set_tracking_uri(tracking_uri)
-        mlflow.set_experiment(mlflow_settings.experiment_name)
+        mlflow.set_experiment(experiment_name)
+
+        client = MlflowClient()
+        experiment = mlflow.get_experiment_by_name(experiment_name)
+        if experiment is not None:
+            _experiment_tags = {
+                "project": "fraud-detection-mlops",
+                "team": "mlops",
+                "data_version": "v1",
+                "model_algorithm": "xgboost",
+                "task": "binary_classification",
+            }
+            for key, value in _experiment_tags.items():
+                client.set_experiment_tag(experiment.experiment_id, key, value)
+
         run_name = f"train-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"
         run = mlflow.start_run(run_name=run_name)
-        return run, tracking_uri, mlflow_settings.experiment_name
+
+        try:
+            git_commit = subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"], text=True
+            ).strip()
+        except Exception:
+            git_commit = "unknown"
+        mlflow.set_tag("git_commit", git_commit)
+
+        return run, tracking_uri, experiment_name
     except Exception as exc:
         raise RuntimeError(f"MLflow tracking unavailable: {exc}") from exc
 
