@@ -132,7 +132,7 @@ Se levanto Schema Registry y se configuro compatibilidad backward. Esto garantiz
 
 ### 3.2 Producer: simulacion realista de transacciones
 
-Se definio el modelo base `Transaction` en `ingestion/producer/models.py` y se implemento un generador de transacciones legitimas en `generator.py`, con:
+Se definio el modelo base `Transaction` en `ingestion/models.py` y se implemento un generador de transacciones legitimas en `generator.py`, con:
 
 - Distribuciones log-normales por categoria
 - Preferencias por pais y dispositivo
@@ -189,7 +189,7 @@ Se construyo el pipeline en `ingestion/consumer/main.py`:
 6. Inserta en TimescaleDB (si disponible)
 7. Publica evento enriquecido en `transactions.features`
 
-Los calculos de ventana viven en `windows.py` y los historicos en `historical.py`. Los modelos de features estan en `feature_models.py`.
+Los calculos de ventana viven en `window_store.py` y los historicos en `historical_store.py`. Los modelos de features estan en `features.py`.
 
 ### 3.6 Redis como feature store
 
@@ -246,7 +246,7 @@ Los encoders se persisten como artefactos para garantizar que el serving use exa
 - Correlacion de Pearson para detectar pares redundantes (umbral: |r| > 0.85). Elimina la feature con menor gain del par.
 - Boruta opcional (desactivado por defecto) para confirmacion estadistica.
 
-El resultado quedo fijado en `model/features.py` como `SELECTED_FEATURES`: 17 features finales. `tx_velocity_1h` fue descartada por ser numericamente identica a `tx_count_1h` (r = 1.0). Todas las demas features superaron los umbrales de importancia y correlacion sobre el dataset seed.
+El resultado quedo fijado en `model/selected_features.py` como `SELECTED_FEATURES`: 16 features finales. `tx_velocity_1h` fue descartada por ser numericamente identica a `tx_count_1h` (r = 1.0). `device_type_encoded` fue descartada por importancia < 1% sobre el dataset de 50 000 filas. Todas las demas features superaron los umbrales de importancia y correlacion.
 
 `TransactionFeaturizer.apply_selection()` permite encadenar la seleccion directamente al featurizer para que `transform()` y `get_feature_names()` respeten el subconjunto elegido.
 
@@ -289,3 +289,12 @@ El proceso carga el modelo desde el MLflow Registry por nombre y version, constr
 4. Solo si la transaccion de base de datos confirma sin errores, transiciona el modelo en MLflow a `Production` con `archive_existing_versions=True`.
 
 Este orden garantiza que la base de datos nunca quede desincronizada del registry: si MLflow falla, la DB no queda con una version activa que no existe; si la DB falla, el modelo no se promueve.
+
+### 4.5 Refactoring y estabilizacion
+
+Durante las pruebas end-to-end de la Fase 4 se realizaron los siguientes ajustes:
+
+- **Consolidacion de ingestion**: `Transaction` se movio a `ingestion/models.py` y utilidades de timezone a `ingestion/utils.py`. `AvroKafkaProducer` se extrajo a `ingestion/avro_producer.py`. Los modulos del consumer se renombraron: `windows.py` → `window_store.py`, `historical.py` → `historical_store.py`, `feature_models.py` → `features.py`.
+- **Extraccion de modulos del modelo**: funciones de evaluacion a `model/metrics.py`, de visualizacion a `model/plots.py`. `model/features.py` se renombro a `model/selected_features.py`. Se corrigio un bug en `select_features` donde `max_iter` era usado sin estar declarado como parametro.
+- **Seed simplificado**: se reemplazo `scripts/seed-timescale.sh` por el comando Docker documentado en `database/timescaledb/seeds/README.md`, corrigiendo ademas los nombres de variables de entorno y agregando `PYTHONPATH=/app`.
+- **Dependencias**: se agregaron `joblib`, `psycopg2-binary` y `pydantic-settings` al grupo `model` de `pyproject.toml`.
