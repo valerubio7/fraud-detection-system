@@ -87,7 +87,7 @@ Función almacenada directamente en la base de datos PostgreSQL. En este proyect
 Función que PostgreSQL ejecuta automáticamente cuando ocurre un evento (INSERT, UPDATE, DELETE). En este proyecto dispara alertas cuando la tasa de fraude supera cierto umbral y registra cambios en el log de auditoría.
 
 **Drift**
-Degradación del modelo a lo largo del tiempo porque los datos del mundo real cambian. Por ejemplo, si aparece un nuevo patrón de fraude que el modelo nunca vio en entrenamiento, su performance cae. La base de datos tiene una tabla `drift_reports` preparada para registrar estos eventos.
+Degradación del modelo a lo largo del tiempo porque los datos del mundo real cambian. Por ejemplo, si aparece un nuevo patrón de fraude que el modelo nunca vio en entrenamiento, su performance cae. La base de datos tiene una tabla `drift_reports` que almacena cada reporte generado por el pipeline de Evidently.
 
 ---
 
@@ -182,11 +182,17 @@ Plataforma para rastrear experimentos de machine learning. Guarda métricas, par
 **Model Registry**
 Componente de MLflow que gestiona versiones de modelos y sus etapas (`Staging` → `Production`).
 
+**Artifact store**
+Almacén de archivos de MLflow donde se guardan los artefactos de cada run: el modelo serializado, los encoders, gráficos de evaluación, el dataset de referencia para drift, y los reportes HTML de Evidently. En este proyecto usa el filesystem del contenedor mlflow montado como volumen Docker.
+
 **Staging**
 Etapa inicial de un modelo registrado en MLflow. El modelo existe pero aún no está en producción; primero debe pasar los quality gates.
 
 **Production**
 Etapa de un modelo que está activo en producción. Solo puede haber un modelo en `Production` a la vez.
+
+**Archived**
+Etapa final de un modelo en MLflow. Se asigna automáticamente cuando un modelo falla los quality gates o es desplazado por un nuevo champion. Los modelos archivados quedan almacenados pero ya no se sirven.
 
 **Quality Gates**
 Umbrales mínimos que un modelo debe superar antes de poder promoverse a producción: F1-score >= 0.85, AUC-ROC >= 0.90, latencia P99 <= 50ms.
@@ -195,10 +201,58 @@ Umbrales mínimos que un modelo debe superar antes de poder promoverse a producc
 Patrón de comparación de modelos. El champion es el modelo actualmente en producción; el challenger es el candidato nuevo. El challenger solo reemplaza al champion si lo supera en F1 por más de 2 puntos porcentuales.
 
 **Airflow**
-Orquestador de workflows. Permite programar y monitorear pipelines de datos y ML. Accesible en `http://localhost:8080`.
+Orquestador de workflows. Permite programar y monitorear pipelines de datos y ML. Accesible en `http://localhost:8081`.
+
+**DAG (Directed Acyclic Graph)**
+La unidad básica de Airflow: un grafo de tareas con dependencias entre ellas. "Acíclico" significa que nunca hay ciclos; las tareas siempre fluyen hacia adelante. Cada DAG tiene un schedule (cuándo corre) y un conjunto de tasks (qué hace).
+
+**Task (Airflow)**
+Unidad mínima de trabajo dentro de un DAG. Cada task hace una cosa: extraer datos, entrenar un modelo, evaluar métricas, etc. Las dependencias entre tasks definen el orden de ejecución.
+
+**Operador (Airflow)**
+Clase base de Airflow que implementa la lógica de una task. En este proyecto hay tres operadores custom: `TimescaleExtractOperator` (extrae datos a Parquet), `EvidentlyReportOperator` (ejecuta análisis de drift) y `MLflowRegisterModelOperator` (transiciona versiones en el Registry).
+
+**XCom**
+Mecanismo de Airflow para compartir valores entre tasks de un mismo DAG. Una task produce un valor (`return` o `xcom_push`) y otra lo lee (`xcom_pull`). En este proyecto se usa para pasar paths de Parquet, `model_version` y resultados de drift entre tasks.
+
+**Event-driven DAG**
+DAG con `schedule=None` que solo corre cuando es disparado explícitamente, ya sea desde otro DAG via `trigger_dag()` o desde la API REST de Airflow. En este proyecto `validate_and_promote_model` es event-driven: solo corre cuando `retrain_fraud_model` termina exitosamente.
+
+**TriggerRule**
+Condición bajo la cual Airflow ejecuta una task, más allá de la dependencia estándar (esperan a que las anteriores terminen con éxito). `TriggerRule.ONE_FAILED` ejecuta la task si al menos una dependencia falló o fue skipeada. En este proyecto se usa para archivar versiones rechazadas automáticamente.
+
+**AirflowSkipException**
+Excepción especial de Airflow que marca una task como "skipeada" en lugar de "fallida". Se usa cuando la condición de negocio no se cumple (por ejemplo, datos insuficientes para reentrenar) pero no es un error; el DAG simplemente no tiene trabajo que hacer.
+
+**Reentrenamiento automático**
+Proceso por el cual el pipeline dispara un nuevo ciclo de entrenamiento sin intervención humana. En este proyecto puede iniciarse de dos formas: por el schedule diario de `retrain_fraud_model` o por el DAG de drift cuando detecta severidad `HIGH` o `CRITICAL`.
+
+**Deployment activo**
+El registro en `public.model_deployments` donde `is_active = TRUE`. Identifica la versión del modelo que sirve predicciones en ese momento. Solo puede haber uno activo a la vez; el stored procedure `activate_model_version` garantiza esa invariante con una transacción atómica.
+
+**Evidently AI**
+Librería Python para monitoreo de modelos ML. Calcula automáticamente métricas de drift sobre features y performance del modelo, y genera reportes en distintos formatos (dict, HTML). En este proyecto se usa con `DataDriftPreset` para comparar la distribución actual de features contra el dataset de referencia de entrenamiento.
+
+**Data drift**
+Cambio en la distribución estadística de las features de entrada con respecto al dataset de referencia. Se detecta feature por feature usando tests estadísticos (Wasserstein para numéricas, chi-cuadrado para categóricas). Si el `drift_share` supera el `DRIFT_THRESHOLD_GLOBAL` (30%), Evidently reporta dataset drift.
+
+**Model drift**
+Degradación de las métricas de performance del modelo en producción respecto al baseline de entrenamiento. Se calcula comparando el F1 actual (sobre predicciones con `actual_label` conocido) contra el F1 registrado en `model_deployments`. Si la caída supera 0.05 puntos, se declara model drift.
+
+**Drift score**
+Valor numérico entre 0 y 1 que representa la intensidad del data drift en una feature. Un drift score alto indica que la distribución actual se alejó significativamente de la referencia. En el contexto del dataset completo, `drift_share` es la proporción de features con drift detectado.
+
+**Dataset de referencia (reference dataset)**
+El conjunto de datos de entrenamiento guardado como artefacto en MLflow (`reference_dataset.parquet`). Sirve como línea base para el análisis de drift: cada vez que corre el DAG de detección, compara los datos de producción recientes contra este archivo, garantizando consistencia entre el modelo activo y su referencia de drift.
+
+**Feature crítica**
+Feature que tiene mayor impacto operativo en la detección de fraude y por eso recibe umbrales de drift más estrictos. En este proyecto son cinco: `tx_count_1h`, `amount_sum_1h`, `amount_ratio_vs_user_avg`, `is_country_new`, `seconds_since_last_tx`. Si alguna de ellas deriva, la severidad de la alerta sube directamente a `HIGH` o `CRITICAL`.
+
+**Severidad de drift**
+Clasificación de la urgencia de una alerta de drift: `INFO` (dentro de límites aceptables), `WARNING` (drift global superó el umbral pero sin features críticas), `HIGH` (features críticas con drift o degradación del modelo), `CRITICAL` (ambas condiciones al mismo tiempo). Solo `HIGH` y `CRITICAL` disparan reentrenamiento automático.
 
 **Artefacto (MLflow artifact)**
-Archivo generado durante un experimento y guardado en MLflow: gráficos de curvas ROC, matriz de confusión, el archivo del modelo entrenado, encoders, etc. Permite reproducir y auditar cualquier run histórico.
+Archivo generado durante un experimento y guardado en MLflow: gráficos de curvas ROC, matriz de confusión, el archivo del modelo entrenado, encoders, dataset de referencia para drift, y reportes HTML de Evidently. Permite reproducir y auditar cualquier run histórico.
 
 **Latencia P99**
 El tiempo de respuesta que el 99% de las predicciones no supera. Si P99 = 12ms significa que 99 de cada 100 predicciones tardan menos de 12ms. Es el indicador de rendimiento más relevante en sistemas de tiempo real.

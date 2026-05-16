@@ -367,3 +367,100 @@ Se realizaron varios fixes para estabilizar el serving:
 ### 5.7 Dependencias y documentación
 
 Se regeneró `uv.lock` con las nuevas dependencias: `asyncpg` y el grupo `inference` para el consumer. Se actualizó `docs/glossary.md` con los términos de serving e inference. Se documentó la arquitectura completa en `serving/README.md` con diagrama de flujo, ejemplos de request/response y descripción de cada servicio interno.
+
+## Fase 6: MLOps pipeline — reentrenamiento, drift y calidad de datos
+
+### 6.1 Inicialización de MLflow
+
+Se creó `mlops/mlflow/init_mlflow.py` como script idempotente de bootstrap del servidor MLflow. Crea el experimento `fraud-detection-v1` si no existe, le asigna tags de proyecto (algoritmo, tarea, versión de datos) y configura los metadatos del modelo registrado `FraudDetectionModel` en el Registry (descripción del ciclo de vida, tags de serving y selección de features). El script reintenta la conexión hasta cinco veces antes de fallar, lo que lo hace seguro para ejecutarse desde el setup general incluso cuando MLflow demora en arrancar.
+
+Este script se integró en `scripts/setup.sh` como paso explícito tras el healthcheck de MLflow, garantizando que el experimento y el registro existan antes de que cualquier run de entrenamiento intente loggearse.
+
+### 6.2 DAGs de Airflow
+
+Se construyeron cuatro DAGs en `mlops/airflow/dags/` que cubren el ciclo de vida completo del modelo en producción.
+
+**`retrain_fraud_model`** corre diariamente a las 02:00. Verifica que haya al menos 1000 transacciones etiquetadas en TimescaleDB antes de proceder. Si el dato es suficiente, invoca `model/train.py` como subproceso capturando su salida para extraer el `run_id` de MLflow. Al terminar el entrenamiento, localiza la última versión en `Staging` y dispara el DAG `validate_and_promote_model` pasándole `model_name`, `model_version` y `run_id` vía `dag_run.conf`. Si los datos no alcanzan el mínimo, el DAG hace `AirflowSkipException` para no generar runs fallidos innecesarios.
+
+**`validate_and_promote_model`** es event-driven (schedule `None`): solo corre cuando lo dispara `retrain_fraud_model` o una intervención manual. Recibe los parámetros del modelo vía `dag_run.conf` y ejecuta en secuencia:
+
+1. `run_quality_gates_task`: invoca `model.evaluate.run_quality_gates()` — F1 ≥ 0.85, AUC-ROC ≥ 0.90, latencia P99 ≤ 50 ms.
+2. `compare_with_champion`: si los gates pasan, invoca `model.evaluate.compare_challenger_vs_champion()`. El challenger debe superar al champion por más de 0.02 de F1. Si no hay champion en `Production`, el challenger gana por defecto.
+3. `promote_to_production_task`: llama a `model.promote.promote_to_production()`, que transacciona la BD y MLflow atomicamente.
+4. `archive_rejected_version`: con `TriggerRule.ONE_FAILED` — si alguno de los pasos anteriores falla o hace skip, archiva la versión en MLflow para evitar acumulación de versiones huérfanas en `Staging`.
+
+**`data_quality_check`** corre cada hora. Ejecuta tres checks en paralelo:
+
+- `check_transaction_volume`: cuenta transacciones en la última hora en TimescaleDB. Si están por debajo del umbral configurable `MIN_TRANSACTIONS_PER_HOUR` (default: 10), inserta una alerta `LOW_TRANSACTION_VOLUME` en `alert_log`.
+- `check_prediction_rate`: análogo para `predictions_history` en PostgreSQL. Umbral: `MIN_PREDICTIONS_PER_HOUR` (default: 5).
+- `check_amount_distribution`: evalúa distribución de montos en las últimas 24 horas. Alerta si el promedio cae por debajo de 1.0 o si alguna transacción supera 100 000.
+
+**`drift_detection_report`** corre cada seis horas. Es el DAG más complejo y coordina varios tipos de análisis en paralelo:
+
+1. Obtiene el deployment activo desde `model_deployments`.
+2. Descarga el dataset de referencia (`reference_dataset.parquet`) del artefacto MLflow del run de entrenamiento (`mlops/evidently/reference.py`).
+3. Extrae datos de producción de las últimas 24 horas desde TimescaleDB con `TimescaleExtractOperator`.
+4. Featuriza ambos datasets con `TransactionFeaturizer` usando los encoders del run activo.
+5. Ejecuta `EvidentlyReportOperator` (data drift) y `run_model_drift_task` (model drift) en paralelo.
+6. Persiste el reporte en `drift_reports` y evalúa las acciones correctivas.
+7. Exporta el reporte HTML de Evidently como artefacto al run MLflow activo.
+
+### 6.3 Operadores custom de Airflow
+
+Se implementaron tres operadores reutilizables en `mlops/airflow/plugins/fraud_operators.py`:
+
+**`TimescaleExtractOperator`**: consulta TimescaleDB (o PostgreSQL) con SQL arbitrario y serializa el resultado a un archivo Parquet en una ruta configurable. Devuelve la ruta como XCom para encadenar con tareas downstream. Acepta `conn_settings_fn` para apuntar a distintas bases.
+
+**`MLflowRegisterModelOperator`**: lee el `model_version` desde XCom de un task previo y transiciona el modelo a un stage en el Registry. Soporta `archive_existing_versions` para limpiar automáticamente versiones anteriores en el mismo stage.
+
+**`EvidentlyReportOperator`**: lee los paths de Parquet desde XCom de los tasks de featurización y ejecuta `run_data_drift_report()`. Devuelve un dict con `drift_score`, `dataset_drift` y `feature_drifts` por columna, que queda disponible como XCom para tareas de persistencia y alertas.
+
+### 6.4 Detección de drift con Evidently AI
+
+Se construyó el módulo `mlops/evidently/` con responsabilidades separadas por archivo.
+
+**`data_drift.py`** encapsula la ejecución del `DataDriftPreset` de Evidently. La función `_build_and_run_report()` es privada y corre el reporte completo; las funciones públicas `run_data_drift_report()` y `run_data_drift_report_with_html()` exponen dos modos: solo métricas (para la mayoría de los casos) y métricas más HTML (para los reportes periódicos). El resultado se estructura en `DataDriftResult` con `drift_share`, `dataset_drift` y un dict de `FeatureDriftResult` por feature.
+
+**`model_drift.py`** mide degradación de performance del modelo en producción. `fetch_labeled_predictions()` extrae de PostgreSQL las predicciones que tienen `actual_label` marcado (transacciones con feedback real) para el deployment activo en los últimos 7 días. `run_model_drift_report()` calcula F1, precisión y recall actuales con scikit-learn y los compara contra las métricas de referencia almacenadas en `model_deployments`. Si el F1 cae más de 0.05 puntos respecto al baseline, `drift_detected` es `True`. Requiere al menos 50 predicciones etiquetadas para ser concluyente; si no hay suficiente dato, retorna `has_sufficient_data=False` sin fallar.
+
+**`thresholds.py`** centraliza los umbrales de alerta y la lógica de severidad. Define tres umbrales configurables por variable de entorno: `DRIFT_THRESHOLD_CRITICAL` (0.20), `DRIFT_THRESHOLD_GLOBAL` (0.30) y `MODEL_F1_DEGRADATION_THRESHOLD` (0.05). El set `CRITICAL_FEATURES` identifica las cinco features con mayor impacto operativo. `evaluate_drift_action()` combina los resultados de data drift y model drift en una `DriftAction` con severidad (`INFO`, `WARNING`, `HIGH`, `CRITICAL`) y decide si disparar reentrenamiento. Solo los niveles `HIGH` y `CRITICAL` activan el DAG de reentrenamiento vía la REST API de Airflow.
+
+**`drift_store.py`** implementa `DriftReportStore` con dos métodos: `save()` persiste el reporte completo en `public.drift_reports` serializando los feature drifts como JSONB, y `save_alert()` inserta en `public.alert_log`. Se diseñó como clase separada para que el DAG pueda intercambiarla por un stub en tests sin modificar la lógica del pipeline.
+
+**`reference.py`** carga el dataset de referencia desde MLflow: descarga `reference_dataset.parquet` del artefacto del run de entrenamiento y lo retorna como DataFrame. Esto garantiza que el drift siempre se calcule contra exactamente los datos con los que se entrenó la versión activa, no contra un archivo estático que podría desincronizarse.
+
+**`html_exporter.py`** sube el HTML generado por Evidently al artifact store de MLflow usando `MlflowClient.log_artifact()`. Si la subida falla (por ejemplo, si el artifact store es de solo lectura), loggea un warning y retorna `None` sin interrumpir el DAG, ya que el reporte en PostgreSQL ya fue persistido.
+
+### 6.5 Ciclo de vida completo del modelo
+
+La combinación de los cuatro DAGs crea un ciclo de vida autónomo:
+
+```
+[TimescaleDB] ──► retrain_fraud_model (diario 02:00)
+                       │
+                       ▼
+              validate_and_promote_model (event-driven)
+                       │
+              ┌────────┴────────┐
+              │ quality gates   │ champion comparison
+              │ pasan           │ challenger gana
+              └────────┬────────┘
+                       ▼
+              promote_to_production → [PostgreSQL] + [MLflow Registry]
+                       │
+              ┌────────┴────────────────────────────────────┐
+              │                                             │
+    drift_detection_report (c/6h)          data_quality_check (c/1h)
+              │                                             │
+    ┌─────────┴─────────┐                              [alert_log]
+    │ data drift        │ model drift
+    │ (Evidently)       │ (sklearn vs. baseline)
+    └─────────┬─────────┘
+              ▼
+    DriftAction: HIGH/CRITICAL
+              │
+              ▼
+    trigger_retrain_dag → retrain_fraud_model
+```
+
+Esta arquitectura garantiza que ningún paso del ciclo depende de intervención manual: el reentrenamiento dispara la validación, la validación promueve o archiva, el drift detectado vuelve a disparar el reentrenamiento.

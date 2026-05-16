@@ -28,7 +28,7 @@ RUN uv pip install --no-cache-dir \
     "xgboost==2.0.3" \
     "scikit-learn>=1.4.0,<2.0.0" \
     "joblib>=1.3.0,<2.0.0" \
-    "numpy>=1.26.0,<3.0.0" \
-    "pandas>=2.2.0,<3.0.0"
+    "numpy>=1.24.0,<3.0.0" \
+    "pandas>=2.1.0,<3.0.0"
 
 USER airflow
