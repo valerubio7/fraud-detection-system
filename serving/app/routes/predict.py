@@ -34,6 +34,10 @@ def predict(req: TransactionRequest, request: Request) -> PredictionResponse:
 
     prediction_label = prediction_score >= config.model_settings.fraud_score_threshold
 
+    request.app.state.prediction_store.save(
+        req.transaction_id, prediction_score, prediction_label, latency_ms
+    )
+
     return PredictionResponse(
         transaction_id=req.transaction_id,
         prediction_score=prediction_score,
@@ -67,16 +71,20 @@ def predict_batch(req: BatchPredictionRequest, request: Request) -> BatchPredict
     latency_ms = (time.perf_counter() - t0) * 1000
     per_item_ms = latency_ms / len(req.items)
 
-    predictions = [
-        PredictionResponse(
-            transaction_id=item.transaction_id,
-            prediction_score=float(score),
-            prediction_label=float(score) >= threshold,
-            model_version=model_loader.model_version,
-            latency_ms=per_item_ms,
+    prediction_store = request.app.state.prediction_store
+    predictions = []
+    for item, score in zip(req.items, scores, strict=False):
+        label = float(score) >= threshold
+        prediction_store.save(item.transaction_id, float(score), label, per_item_ms)
+        predictions.append(
+            PredictionResponse(
+                transaction_id=item.transaction_id,
+                prediction_score=float(score),
+                prediction_label=label,
+                model_version=model_loader.model_version,
+                latency_ms=per_item_ms,
+            )
         )
-        for item, score in zip(req.items, scores, strict=False)
-    ]
 
     return BatchPredictionResponse(
         predictions=predictions,

@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from .routes.health import router as health_router
 from .routes.predict import router as predict_router
 from .services.model_loader import ModelLoader
+from .services.prediction_store import PredictionStore
 
 
 @asynccontextmanager
@@ -12,6 +13,7 @@ async def lifespan(app: FastAPI):
     loader = ModelLoader()
     loader.load()
     app.state.model_loader = loader
+    app.state.prediction_store = PredictionStore(loader.deployment_id)
     yield
 
 
