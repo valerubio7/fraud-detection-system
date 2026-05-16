@@ -189,6 +189,22 @@ services:
       AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY}
       AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER}
       AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+      PYTHONPATH: /opt/airflow/project
+      POSTGRES_HOST: postgresql
+      POSTGRES_PORT: "5432"
+      TIMESCALE_HOST: timescaledb
+      TIMESCALE_PORT: "5432"
+      TIMESCALE_USER: ${TIMESCALE_USER}
+      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD}
+      TIMESCALE_DB: ${TIMESCALE_DB}
+      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      MODEL_NAME: FraudDetectionModel
+      FRAUD_SCORE_THRESHOLD: "0.5"
+    volumes:
+      - ./mlops/airflow/dags:/opt/airflow/dags
+      - ./mlops/airflow/plugins:/opt/airflow/plugins
+      - .:/opt/airflow/project:ro
     command:
       - bash
       - -c
@@ -235,9 +251,29 @@ services:
       AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER}
       AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      PYTHONPATH: /opt/airflow/project
+      POSTGRES_HOST: postgresql
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TIMESCALE_HOST: timescaledb
+      TIMESCALE_PORT: "5432"
+      TIMESCALE_USER: ${TIMESCALE_USER}
+      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD}
+      TIMESCALE_DB: ${TIMESCALE_DB}
+      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
+      MODEL_NAME: FraudDetectionModel
+      FRAUD_SCORE_THRESHOLD: "0.5"
+      AIRFLOW_CONN_TIMESCALEDB_DEFAULT: "postgresql+psycopg2://${TIMESCALE_USER}:${TIMESCALE_PASSWORD}@timescaledb:5432/${TIMESCALE_DB}"
+      AIRFLOW_CONN_POSTGRES_DEFAULT: "postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/${POSTGRES_DB}"
+      AIRFLOW_CONN_MLFLOW_DEFAULT: "http://mlflow:5000"
     command: ["airflow", "webserver"]
     volumes:
+      - ./mlops/airflow/dags:/opt/airflow/dags
+      - ./mlops/airflow/plugins:/opt/airflow/plugins
       - airflow-logs:/opt/airflow/logs
+      - .:/opt/airflow/project:ro
     healthcheck:
       test:
         [
@@ -266,9 +302,29 @@ services:
       AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER}
       AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      PYTHONPATH: /opt/airflow/project
+      POSTGRES_HOST: postgresql
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TIMESCALE_HOST: timescaledb
+      TIMESCALE_PORT: "5432"
+      TIMESCALE_USER: ${TIMESCALE_USER}
+      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD}
+      TIMESCALE_DB: ${TIMESCALE_DB}
+      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
+      MODEL_NAME: FraudDetectionModel
+      FRAUD_SCORE_THRESHOLD: "0.5"
+      AIRFLOW_CONN_TIMESCALEDB_DEFAULT: "postgresql+psycopg2://${TIMESCALE_USER}:${TIMESCALE_PASSWORD}@timescaledb:5432/${TIMESCALE_DB}"
+      AIRFLOW_CONN_POSTGRES_DEFAULT: "postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/${POSTGRES_DB}"
+      AIRFLOW_CONN_MLFLOW_DEFAULT: "http://mlflow:5000"
     command: ["airflow", "scheduler"]
     volumes:
+      - ./mlops/airflow/dags:/opt/airflow/dags
+      - ./mlops/airflow/plugins:/opt/airflow/plugins
       - airflow-logs:/opt/airflow/logs
+      - .:/opt/airflow/project:ro
     healthcheck:
       test:
         [

@@ -24,6 +24,11 @@ RUN uv pip install --no-cache-dir \
     "apache-airflow==${AIRFLOW_VERSION}" \
     "mlflow==${MLFLOW_VERSION}" \
     "evidently==${EVIDENTLY_VERSION}" \
-    "psycopg2==${PSYCOPG2_VERSION}"
+    "psycopg2==${PSYCOPG2_VERSION}" \
+    "xgboost==2.0.3" \
+    "scikit-learn>=1.4.0,<2.0.0" \
+    "joblib>=1.3.0,<2.0.0" \
+    "numpy>=1.26.0,<3.0.0" \
+    "pandas>=2.2.0,<3.0.0"
 
 USER airflow
