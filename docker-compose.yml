@@ -441,6 +441,8 @@ services:
         condition: service_healthy
       timescaledb:
         condition: service_healthy
+      prometheus:
+        condition: service_started
     ports:
       - "3000:3000"
     environment:
@@ -457,6 +459,22 @@ services:
     networks:
       - mlops-net
 
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    networks:
+      - mlops-net
+
 networks:
   mlops-net:
     driver: bridge
@@ -467,3 +485,4 @@ volumes:
   mlflow-data:
   grafana-data:
   airflow-logs:
+  prometheus-data:

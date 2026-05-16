@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 import asyncpg
 from fastapi import FastAPI, Request
+from prometheus_fastapi_instrumentator import Instrumentator
 
 import config
 
@@ -51,6 +52,8 @@ app = FastAPI(
 
 app.include_router(health_router)
 app.include_router(predict_router)
+
+Instrumentator().instrument(app).expose(app)
 
 
 @app.middleware("http")
