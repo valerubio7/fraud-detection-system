@@ -347,6 +347,24 @@ services:
     networks:
       - mlops-net
 
+  inference_consumer:
+    build:
+      context: .
+      dockerfile: docker/inference_consumer/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      fastapi:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_URL: ${KAFKA_BROKER_URL}
+      KAFKA_TOPICS_FEATURES: ${KAFKA_TOPICS_FEATURES}
+      KAFKA_TOPICS_PREDICTIONS: ${KAFKA_TOPICS_PREDICTIONS}
+      FASTAPI_BASE_URL: http://fastapi:8000
+    networks:
+      - mlops-net
+
   grafana:
     build:
       context: .

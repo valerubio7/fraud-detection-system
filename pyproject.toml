@@ -35,6 +35,12 @@ consumer = [
   "python-dotenv>=1.1.1,<2.0.0",
   "redis>=5.0.0,<6.0.0",
 ]
+inference = [
+  "confluent-kafka>=2.11.0,<3.0.0",
+  "fastavro>=1.12.0,<2.0.0",
+  "httpx>=0.27.0,<1.0.0",
+  "pydantic-settings>=2.0.0,<3.0.0",
+]
 notebooks = [
   "ipykernel>=6.29.0,<7.0.0",
   "jupyterlab>=4.2.0,<5.0.0",
