@@ -1,6 +1,6 @@
 # Historia de implementacion
 
-Este documento narra, de forma detallada, todo lo que se fue construyendo desde el inicio del proyecto hasta la finalizacion de la Fase 3 (ingesta y streaming). El foco esta en decisiones, artefactos creados y el orden en que se consolidaron.
+Este documento narra, de forma detallada, todo lo que se fue construyendo desde el inicio del proyecto hasta la finalizacion de la Fase 4 (modelo ML con XGBoost). El foco esta en decisiones, artefactos creados y el orden en que se consolidaron.
 
 ## Momento cero: vision y plan base
 
@@ -208,3 +208,84 @@ En `timescale_writer.py` se implemento insercion idempotente en `public.transact
 ### 3.8 Publicacion de features
 
 `feature_publisher.py` serializa las features en Avro y publica en `transactions.features`. Se flatean los valores de ventana e historico en un `map<string,double>` para compatibilidad con el schema.
+
+## Fase 4: modelo ML con XGBoost
+
+### 4.1 Exploracion y analisis de datos (EDA)
+
+Se construyeron tres notebooks en `model/notebooks/`:
+
+- `eda_base.ipynb`: distribucion de clases (1-3% de fraude), distribucion de amounts por categoria, analisis de paises y devices.
+- `eda_correlations.ipynb`: matriz de correlacion entre features, importancia inicial con modelo simple, identificacion de features candidatas a eliminar.
+- `eda_temporal.ipynb`: patrones de fraude por hora del dia, dia de la semana y mes; estacionalidad que puede afectar el modelo.
+
+Los hallazgos quedaron documentados en `docs/eda_findings.md`. El mas relevante para el pipeline offline fue la correlacion perfecta (r = 1.0) entre `tx_velocity_1h` y `tx_count_1h`, que anticipo la decision de eliminar la primera en el paso de seleccion de features.
+
+### 4.2 Feature engineering offline
+
+El objetivo central de esta seccion fue replicar con exactitud el pipeline online (Fase 3) pero en modo batch, sin filtrar data del futuro.
+
+**TransactionFeaturizer** (`feature_engineering/offline/featurizer.py`) implementa las mismas 18 features del pipeline de streaming usando:
+
+- Binary search y prefix sums para ventanas temporales (1h, 24h, 7d), con complejidad O(n log n) total por usuario.
+- Estado incremental O(n) para las features de perfil historico (ratio de monto, paises y merchants nuevos).
+- La invariante clave: para la transaccion i solo se usan transacciones con timestamp estrictamente menor, lo que elimina data leakage.
+
+**Encoders** (`feature_engineering/offline/encoders.py`) implementa `CategoricalEncoderPipeline` con dos estrategias:
+
+- `TargetEncoder` con suavizado (smoothed mean target encoding) para `merchant_category` y `country`. Requiere la variable objetivo en fit para calcular las medias por categoria.
+- `OrdinalEncoder` para `device_type`.
+
+Los encoders se persisten como artefactos para garantizar que el serving use exactamente los mismos valores.
+
+**Manejo de desbalance** (`feature_engineering/offline/imbalance.py`) evalua dos estrategias: SMOTE (oversampling de la clase fraude) y `scale_pos_weight` de XGBoost. Incluye `ImbalanceReport` con metricas comparativas por estrategia. En la practica se opto por `scale_pos_weight` calculado como `(n_negatives / n_positives)` sobre el set de entrenamiento.
+
+**Seleccion de features** (`feature_engineering/offline/selection.py`) combina tres metodos:
+
+- Importancia XGBoost basada en gain para descartar features de bajo impacto (umbral: < 1% del gain total).
+- Correlacion de Pearson para detectar pares redundantes (umbral: |r| > 0.85). Elimina la feature con menor gain del par.
+- Boruta opcional (desactivado por defecto) para confirmacion estadistica.
+
+El resultado quedo fijado en `model/features.py` como `SELECTED_FEATURES`: 17 features finales. `tx_velocity_1h` fue descartada por ser numericamente identica a `tx_count_1h` (r = 1.0). Todas las demas features superaron los umbrales de importancia y correlacion sobre el dataset seed.
+
+`TransactionFeaturizer.apply_selection()` permite encadenar la seleccion directamente al featurizer para que `transform()` y `get_feature_names()` respeten el subconjunto elegido.
+
+### 4.3 Entrenamiento del modelo XGBoost
+
+**Script de entrenamiento** (`model/train.py`) orquesta el pipeline completo:
+
+1. Carga transacciones etiquetadas desde TimescaleDB.
+2. Aplica `TransactionFeaturizer` (fit en train, transform en val y test).
+3. Realiza un split temporal — nunca aleatorio — con 70/15/15 sobre el eje de tiempo para evitar data leakage.
+4. Calcula `scale_pos_weight` desde el set de entrenamiento.
+5. Entrena XGBoost con parametros base o con los mejores parametros del tuning si se pasa `--tune`.
+6. Guarda modelo, encoders y metadata de entrenamiento en `artifacts/model/`.
+
+**MLflow tracking**: cada run registra parametros de XGBoost, metricas del test set (F1, precision, recall, AUC-ROC), el rango temporal del dataset, y los siguientes artefactos: confusion matrix, curva ROC, curva PR, feature importances y analisis de threshold. El modelo se registra en el MLflow Model Registry como `FraudDetectionModel` con stage `Staging`.
+
+Un ajuste operativo necesario fue alinear las versiones de MLflow y XGBoost y exponer el artifact store del servidor para que el registry pudiera leer los artefactos de runs locales de forma confiable.
+
+**Hyperparameter tuning** (`model/tuning.py`) usa Optuna con `TPESampler`. La funcion objetivo maximiza PR-AUC en el set de validacion. El espacio de busqueda incluye `n_estimators`, `max_depth`, `learning_rate`, `min_child_weight`, `subsample`, `colsample_bytree` y `scale_pos_weight`. Cada trial queda loggeado en MLflow. El tuning se activa con la flag `--tune`.
+
+**Evaluacion de negocio** (`model/evaluate.py`, primera iteracion) agrega optimizacion de threshold basada en costo. El threshold por defecto (0.5) es reemplazado por el que minimiza la funcion de costo `FN * 100 + FP * 5`, donde 100 es el costo relativo de un fraude no detectado y 5 el de un falso positivo. El threshold optimo y el costo total por transaccion quedan loggeados como artefactos y metricas en MLflow.
+
+### 4.4 Validacion y promocion de modelo
+
+**Quality gates** (`model/evaluate.py`, segunda iteracion) implementa `run_quality_gates()` con tres umbrales fijos:
+
+- F1-score >= 0.85
+- AUC-ROC >= 0.90
+- Latencia P99 <= 50ms (medida en batch de 1000 transacciones con 10 repeticiones)
+
+El proceso carga el modelo desde el MLflow Registry por nombre y version, construye el test set temporal desde TimescaleDB (ultimo 20% cronologico), aplica el featurizer y evalua. Los resultados se escriben de vuelta al run de MLflow como metricas de quality gate. Si alguna gate falla, el script termina con exit code 1. Esto lo hace integrable en cualquier pipeline de CI.
+
+**Comparacion challenger vs champion** (`model/evaluate.py`, tercera iteracion) implementa `compare_challenger_vs_champion()`. Carga el modelo en stage `Production` como champion y el challenger por version. Ambos se evaluan sobre el mismo test set temporal. El challenger gana si su F1 supera al champion en mas de 0.02 (2 puntos porcentuales). Si no hay champion en produccion, el challenger gana por defecto. La funcion `--compare` de la CLI ejecuta primero los quality gates y solo procede a la comparacion si todos pasan.
+
+**Promocion a produccion** (`model/promote.py`) implementa `promote_to_production()` con las siguientes garantias:
+
+1. Verifica que el modelo este en stage `Staging` antes de proceder.
+2. Obtiene metadata del run de MLflow: metricas (F1, precision, recall, AUC-ROC) y ventana temporal del dataset de entrenamiento.
+3. Ejecuta una transaccion PostgreSQL que inserta o reutiliza el registro en `public.model_deployments` por `mlflow_run_id` y llama al stored procedure `activate_model_version` para desactivar versiones anteriores.
+4. Solo si la transaccion de base de datos confirma sin errores, transiciona el modelo en MLflow a `Production` con `archive_existing_versions=True`.
+
+Este orden garantiza que la base de datos nunca quede desincronizada del registry: si MLflow falla, la DB no queda con una version activa que no existe; si la DB falla, el modelo no se promueve.
