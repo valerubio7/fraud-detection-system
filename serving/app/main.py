@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from .routes.health import router as health_router
 from .routes.predict import router as predict_router
 from .services.model_loader import ModelLoader
 
@@ -22,9 +23,5 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.include_router(health_router)
 app.include_router(predict_router)
-
-
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
