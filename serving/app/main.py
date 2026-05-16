@@ -2,9 +2,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from .services.model_loader import ModelLoader
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    loader = ModelLoader()
+    loader.load()
+    app.state.model_loader = loader
     yield
 
 
