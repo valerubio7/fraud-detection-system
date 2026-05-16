@@ -1,3 +1,4 @@
+import logging
 import time
 from contextlib import asynccontextmanager
 
@@ -12,11 +13,17 @@ from .services.cache import PredictionCache
 from .services.model_loader import ModelLoader
 from .services.prediction_store import PredictionStore
 
+_log = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     loader = ModelLoader()
-    loader.load()
+    try:
+        loader.load()
+    except Exception as exc:
+        _log.error("Model load failed, starting in degraded mode: %s", exc)
+
     app.state.model_loader = loader
 
     dsn = config.postgres_settings.sqlalchemy_uri.replace("postgresql+psycopg2://", "postgresql://")

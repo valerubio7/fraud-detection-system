@@ -41,6 +41,7 @@ class ModelLoader:
             )
         version = versions[0]
 
+        Path("/tmp/fraud_model").mkdir(parents=True, exist_ok=True)
         client.download_artifacts(version.run_id, "", dst_path="/tmp/fraud_model")
         self._model = joblib.load(_ARTIFACTS_DIR / "xgboost_model.joblib")
         self._encoder = joblib.load(_ARTIFACTS_DIR / "categorical_encoder.joblib")
