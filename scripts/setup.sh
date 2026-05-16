@@ -301,6 +301,13 @@ wait_for_service "postgresql" check_postgresql 60 3
 wait_for_service "timescaledb" check_timescaledb 60 3
 wait_for_service "kafka" check_kafka 60 3
 wait_for_service "mlflow" check_mlflow 60 3
+
+print_step "Inicializando MLflow (experimento y registry)..."
+docker compose run --rm -e MLFLOW_TRACKING_URI=http://mlflow:5000 \
+  -e PYTHONPATH=/app \
+  mlflow python mlops/mlflow/init_mlflow.py \
+  && print_success "MLflow inicializado correctamente"
+
 wait_for_service "fastapi" check_fastapi 60 3
 
 # ============================================================================
