@@ -1,6 +1,264 @@
 {
-  "title": "Fraud Alerts",
-  "panels": [],
+  "uid": "fraud-alerts",
+  "title": "Fraud Detection — Alertas en vivo",
+  "tags": ["fraud", "realtime"],
   "schemaVersion": 39,
-  "version": 1
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "title": "Tasa de fraude actual",
+      "type": "gauge",
+      "gridPos": {"w": 6, "h": 8, "x": 0, "y": 0},
+      "datasource": {"type": "postgres", "uid": "timescaledb"},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT fraud_rate * 100 AS \"Fraud Rate %\"\nFROM fraud_volume_hourly\nWHERE bucket_hour >= NOW() - INTERVAL '1 hour'\nORDER BY bucket_hour DESC\nLIMIT 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 2},
+              {"color": "red", "value": 5}
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "thresholds",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Volumen de transacciones por minuto",
+      "type": "timeseries",
+      "gridPos": {"w": 18, "h": 8, "x": 6, "y": 0},
+      "datasource": {"type": "postgres", "uid": "timescaledb"},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT\n  time_bucket('1 minute', \"timestamp\") AS time,\n  COUNT(*) AS \"Total\",\n  COUNT(*) FILTER (WHERE is_fraud IS TRUE) AS \"Fraud\"\nFROM transactions\nWHERE $__timeFilter(\"timestamp\")\nGROUP BY 1\nORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "drawStyle": "line",
+            "spanNulls": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "Fraud"},
+            "properties": [
+              {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}
+            ]
+          }
+        ]
+      },
+      "options": {
+        "tooltip": {"mode": "multi", "sort": "none"},
+        "legend": {"displayMode": "list", "placement": "bottom", "calcs": []}
+      }
+    },
+    {
+      "id": 3,
+      "title": "Alertas recientes",
+      "type": "table",
+      "gridPos": {"w": 12, "h": 10, "x": 0, "y": 8},
+      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT\n  triggered_at AS \"Timestamp\",\n  alert_type AS \"Tipo\",\n  severity AS \"Severidad\",\n  message AS \"Mensaje\"\nFROM alert_log\nORDER BY triggered_at DESC\nLIMIT 50"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "displayMode": "auto",
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "Severidad"},
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {"type": "value", "options": {"CRITICAL": {"color": "red", "index": 0}}},
+                  {"type": "value", "options": {"HIGH": {"color": "orange", "index": 1}}},
+                  {"type": "value", "options": {"WARNING": {"color": "yellow", "index": 2}}},
+                  {"type": "value", "options": {"INFO": {"color": "blue", "index": 3}}}
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{"displayName": "Timestamp", "desc": true}],
+        "footer": {"show": false, "reducer": ["sum"]}
+      }
+    },
+    {
+      "id": 4,
+      "title": "Top 10 merchants con más fraude",
+      "type": "table",
+      "gridPos": {"w": 12, "h": 10, "x": 12, "y": 8},
+      "datasource": {"type": "postgres", "uid": "timescaledb"},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT\n  merchant_id AS \"Merchant\",\n  merchant_category AS \"Categoría\",\n  COUNT(*) FILTER (WHERE is_fraud IS TRUE) AS \"Fraudes\",\n  COUNT(*) AS \"Total\",\n  ROUND(\n    (COUNT(*) FILTER (WHERE is_fraud IS TRUE))::numeric / NULLIF(COUNT(*), 0) * 100,\n    2\n  ) AS \"Tasa %\"\nFROM transactions\nWHERE \"timestamp\" >= NOW() - INTERVAL '24 hours'\nGROUP BY merchant_id, merchant_category\nORDER BY \"Fraudes\" DESC\nLIMIT 10"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "displayMode": "auto",
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "Tasa %"},
+            "properties": [
+              {"id": "unit", "value": "percent"},
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {"color": "green", "value": null},
+                    {"color": "yellow", "value": 2},
+                    {"color": "red", "value": 5}
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {"show": false, "reducer": ["sum"]}
+      }
+    },
+    {
+      "id": 5,
+      "title": "Fraudes detectados (última hora)",
+      "type": "stat",
+      "gridPos": {"w": 6, "h": 4, "x": 0, "y": 18},
+      "datasource": {"type": "postgres", "uid": "timescaledb"},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT SUM(total_fraud_transactions) AS \"Fraudes\"\nFROM fraud_volume_hourly\nWHERE bucket_hour >= NOW() - INTERVAL '1 hour'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 10},
+              {"color": "red", "value": 50}
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Transacciones totales (última hora)",
+      "type": "stat",
+      "gridPos": {"w": 6, "h": 4, "x": 6, "y": 18},
+      "datasource": {"type": "postgres", "uid": "timescaledb"},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT SUM(total_transactions) AS \"Transacciones\"\nFROM fraud_volume_hourly\nWHERE bucket_hour >= NOW() - INTERVAL '1 hour'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {"mode": "fixed", "fixedColor": "blue"},
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    }
+  ]
 }
