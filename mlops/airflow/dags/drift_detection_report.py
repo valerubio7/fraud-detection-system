@@ -19,7 +19,6 @@ from mlops.evidently.reference import load_reference_dataset
 from model.selected_features import SELECTED_FEATURES
 
 DAG_ID = "drift_detection_report"
-DRIFT_ALERT_THRESHOLD = 0.3
 ENCODER_ARTIFACT_PATH = "categorical_encoder.joblib"
 ENCODER_DST_DIR = "/tmp/drift_encoder"
 REFERENCE_PARQUET = "/tmp/drift_reference.parquet"
@@ -171,41 +170,32 @@ def drift_detection_report() -> None:
 
     @task
     def save_report_to_postgresql(deployment: dict, data_drift: dict, model_drift: dict) -> int:
+        import config
         from mlops.evidently.drift_store import DriftReportStore
+        from mlops.evidently.thresholds import evaluate_drift_action, trigger_retrain_dag
 
+        action = evaluate_drift_action(data_drift, model_drift)
         store = DriftReportStore()
-        alert = data_drift["drift_score"] > DRIFT_ALERT_THRESHOLD or model_drift.get(
-            "drift_detected", False
-        )
+
+        if action.alert_triggered:
+            store.save_alert(
+                alert_type="DRIFT_DETECTED",
+                severity=action.severity,
+                message=f"{action.alert_message} — model v{deployment['model_version']}",
+            )
+
+        if action.trigger_retraining:
+            trigger_retrain_dag(config.mlflow_settings.tracking_uri)
+
         report_id = store.save(
             deployment_id=deployment["deployment_id"],
             data_drift_score=data_drift["drift_score"],
             feature_drifts=data_drift["feature_drifts"],
             model_drift_detected=model_drift.get("drift_detected", False),
             model_f1_degradation=model_drift.get("f1_degradation"),
-            alert_triggered=alert,
+            alert_triggered=action.alert_triggered,
+            remediation_action=action.remediation_action,
         )
-        if data_drift["drift_score"] > DRIFT_ALERT_THRESHOLD:
-            store.save_alert(
-                alert_type="DRIFT_DETECTED",
-                severity="HIGH",
-                message=(
-                    f"Data drift detected: global score={data_drift['drift_score']:.3f} "
-                    f"for model v{deployment['model_version']}"
-                ),
-            )
-        if model_drift.get("drift_detected"):
-            deg = model_drift.get("f1_degradation")
-            f1 = model_drift.get("current_f1")
-            store.save_alert(
-                alert_type="MODEL_DRIFT_DETECTED",
-                severity="HIGH",
-                message=(
-                    f"Model drift detected: F1 degradation={deg:.3f}, "
-                    f"current_f1={f1:.3f} "
-                    f"for model v{deployment['model_version']}"
-                ),
-            )
         return report_id
 
     # --- Dependency wiring ---
