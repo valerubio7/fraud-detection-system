@@ -47,7 +47,10 @@ Canal de mensajes dentro de Kafka. Cada tipo de evento tiene su propio topic. Lo
 Servicio que genera y publica mensajes a Kafka. En este proyecto simula transacciones bancarias (legítimas y fraudulentas).
 
 **Consumer**
-Servicio que lee mensajes de Kafka y los procesa. En este proyecto lee las transacciones, calcula features y las guarda en base de datos.
+Servicio que lee mensajes de Kafka y los procesa. En este proyecto hay dos consumers: el de features (calcula features y las guarda en base de datos) y el de inferencia (llama a la API de scoring y publica predicciones).
+
+**Inference Consumer**
+Consumer especializado que lee mensajes del topic `transactions.features`, llama al endpoint `POST /predict` de la FastAPI y publica el resultado en `transactions.predictions`. Si la predicción indica fraude, también publica en `transactions.fraud.alerts`.
 
 **Avro**
 Formato de serialización de datos (similar a JSON pero más compacto y con schema). Todos los mensajes de Kafka en este proyecto usan Avro.
@@ -131,6 +134,43 @@ Algoritmo de selección de features que determina estadísticamente cuáles son 
 
 **Optuna**
 Framework para optimizar hiperparámetros automáticamente. Prueba distintas combinaciones de parámetros de XGBoost y elige la que da mejores resultados. Se activa con `--tune`.
+
+---
+
+## Serving del modelo
+
+**Model Serving**
+Proceso de exponer un modelo entrenado como un servicio accesible por otros sistemas. En este proyecto la FastAPI recibe una transacción, ejecuta la inferencia y devuelve el score de fraude en tiempo real.
+
+**Lifespan (FastAPI)**
+Mecanismo de FastAPI para ejecutar lógica de startup y shutdown del servidor. En este proyecto se usa para cargar el modelo desde MLflow, crear el pool de conexiones a PostgreSQL e inicializar el cliente de Redis antes de aceptar requests.
+
+**Hot path**
+La ruta de código que se ejecuta en cada request de inferencia. Es crítica porque su latencia determina el tiempo de respuesta de la API. En este proyecto incluye: lectura de caché Redis → cálculo de features → inferencia XGBoost → respuesta al cliente.
+
+**BackgroundTasks (FastAPI)**
+Mecanismo de FastAPI para ejecutar trabajo después de enviar la respuesta al cliente. En este proyecto se usa para escribir cada predicción en PostgreSQL sin que esa escritura afecte la latencia del endpoint.
+
+**Connection pool (asyncpg)**
+Conjunto de conexiones a PostgreSQL mantenidas abiertas y reutilizables entre requests. Evita el overhead de abrir y cerrar una conexión TCP en cada escritura. En este proyecto el pool tiene entre 2 y 10 conexiones, configurables vía variables de entorno.
+
+**asyncpg**
+Driver Python asíncrono para PostgreSQL. Mucho más eficiente que psycopg2 en aplicaciones async porque no bloquea el event loop mientras espera respuesta de la base de datos.
+
+**Cache de predicciones**
+Respuesta almacenada en Redis indexada por `transaction_id`. Si el mismo `transaction_id` llega dos veces al endpoint `/predict`, la segunda llamada devuelve la respuesta cacheada sin ejecutar el modelo. TTL de 60 segundos.
+
+**Circuit Breaker**
+Patrón de resiliencia que protege un servicio de llamadas repetidas a un dependiente caído. Tiene tres estados: CLOSED (operación normal), OPEN (dependiente no disponible, llamadas bloqueadas) y HALF_OPEN (prueba si el dependiente se recuperó). En este proyecto protege al inference consumer ante saturación o caída de la FastAPI.
+
+**Backpressure**
+Mecanismo para que un consumidor señalice que no puede procesar mensajes más rápido. En este proyecto se implementa con el circuit breaker (descarta mensajes cuando la API está caída) y con `INFERENCE_RATE_LIMIT_MS` (pausa configurable entre requests).
+
+**Commit selectivo (Kafka)**
+Estrategia de confirmar el offset de Kafka solo cuando el mensaje fue procesado exitosamente de extremo a extremo. Si la inferencia o la publicación falla, el offset no se confirma y el mensaje se reintenta en la siguiente iteración del loop.
+
+**Severidad de alerta**
+Clasificación del riesgo de fraude según el score del modelo: `WARNING` (score ≥ 0.50), `HIGH` (score ≥ 0.75), `CRITICAL` (score ≥ 0.90). Determina la urgencia con que el equipo operativo debe responder.
 
 ---
 
