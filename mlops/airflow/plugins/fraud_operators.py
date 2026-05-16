@@ -119,28 +119,21 @@ class EvidentlyReportOperator(BaseOperator):
 
     def execute(self, context: dict) -> dict:
         import pandas as pd
-        from evidently.metric_preset import DataDriftPreset
-        from evidently.report import Report
+
+        from mlops.evidently.data_drift import run_data_drift_report
 
         ref_path = context["ti"].xcom_pull(task_ids=self.reference_path_xcom_task_id)
         cur_path = context["ti"].xcom_pull(task_ids=self.current_path_xcom_task_id)
 
-        ref_df = pd.read_parquet(ref_path)[self.columns]
-        cur_df = pd.read_parquet(cur_path)[self.columns]
+        ref_df = pd.read_parquet(ref_path)
+        cur_df = pd.read_parquet(cur_path)
 
-        report = Report(metrics=[DataDriftPreset()])
-        report.run(reference_data=ref_df, current_data=cur_df)
-        result = report.as_dict()["metrics"][0]["result"]
-
+        result = run_data_drift_report(ref_df, cur_df, self.columns)
         return {
-            "drift_score": result["share_of_drifted_columns"],
-            "dataset_drift": result["dataset_drift"],
+            "drift_score": result.drift_share,
+            "dataset_drift": result.dataset_drift,
             "feature_drifts": {
-                col: {
-                    "drift_detected": result["drift_by_columns"][col]["drift_detected"],
-                    "drift_score": result["drift_by_columns"][col]["stattest_threshold"],
-                }
-                for col in self.columns
-                if col in result.get("drift_by_columns", {})
+                name: {"drift_detected": fr.drift_detected, "drift_score": fr.drift_score}
+                for name, fr in result.feature_results.items()
             },
         }
