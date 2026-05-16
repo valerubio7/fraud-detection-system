@@ -68,3 +68,4 @@ airflow-webserver.pid
 # OS files
 .DS_Store
 Thumbs.db
+docs/prompts.md

@@ -3,6 +3,7 @@ services:
     # Bind-mount API code so edits on host trigger reload without rebuilding the image.
     volumes:
       - ./serving:/app/serving
+      - ./feature_engineering:/app/feature_engineering
     # Override runtime command to enable FastAPI hot-reload during development.
     command:
       - uvicorn

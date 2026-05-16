@@ -10,7 +10,7 @@ from mlflow.tracking import MlflowClient
 
 import config
 
-_ARTIFACTS_DIR = Path("/tmp/fraud_model/artifacts/model")
+_ARTIFACTS_DIR = Path("/tmp/fraud_model")
 
 
 class ModelLoader:

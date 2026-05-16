@@ -16,6 +16,7 @@ RUN uv sync --frozen --no-dev --no-install-project --group serving
 
 COPY config.py ./
 COPY serving ./serving
+COPY feature_engineering ./feature_engineering
 
 RUN groupadd --system app && useradd --system --gid app --create-home app && chown -R app:app /app
 
