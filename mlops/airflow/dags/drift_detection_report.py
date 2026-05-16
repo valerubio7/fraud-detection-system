@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -171,61 +170,43 @@ def drift_detection_report() -> None:
         }
 
     @task
-    def save_report_to_postgresql(deployment: dict, report: dict, model_drift: dict) -> None:
-        alert_triggered = report["drift_score"] > DRIFT_ALERT_THRESHOLD
+    def save_report_to_postgresql(deployment: dict, data_drift: dict, model_drift: dict) -> int:
+        from mlops.evidently.drift_store import DriftReportStore
 
-        conn = _pg_conn()
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO public.drift_reports
-                        (model_version_id, drift_score, feature_drifts, alert_triggered)
-                    VALUES (%s, %s, %s, %s)
-                    """,
-                    (
-                        deployment["deployment_id"],
-                        report["drift_score"],
-                        json.dumps(report["feature_drifts"]),
-                        alert_triggered,
-                    ),
-                )
-
-                if alert_triggered:
-                    message = (
-                        f"Data drift detected: global score={report['drift_score']:.3f} "
-                        f"for model v{deployment['model_version']}"
-                    )
-                    cur.execute(
-                        """
-                        INSERT INTO public.alert_log (alert_type, severity, message)
-                        VALUES ('DRIFT_DETECTED', 'HIGH', %s)
-                        """,
-                        (message,),
-                    )
-
-                if model_drift.get("drift_detected"):
-                    deg = model_drift.get("f1_degradation")
-                    f1 = model_drift.get("current_f1")
-                    message = (
-                        f"Model drift detected: F1 degradation={deg:.3f}, "
-                        f"current_f1={f1:.3f} "
-                        f"for model v{deployment['model_version']}"
-                    )
-                    cur.execute(
-                        """
-                        INSERT INTO public.alert_log (alert_type, severity, message)
-                        VALUES ('MODEL_DRIFT_DETECTED', 'HIGH', %s)
-                        """,
-                        (message,),
-                    )
-
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+        store = DriftReportStore()
+        alert = data_drift["drift_score"] > DRIFT_ALERT_THRESHOLD or model_drift.get(
+            "drift_detected", False
+        )
+        report_id = store.save(
+            deployment_id=deployment["deployment_id"],
+            data_drift_score=data_drift["drift_score"],
+            feature_drifts=data_drift["feature_drifts"],
+            model_drift_detected=model_drift.get("drift_detected", False),
+            model_f1_degradation=model_drift.get("f1_degradation"),
+            alert_triggered=alert,
+        )
+        if data_drift["drift_score"] > DRIFT_ALERT_THRESHOLD:
+            store.save_alert(
+                alert_type="DRIFT_DETECTED",
+                severity="HIGH",
+                message=(
+                    f"Data drift detected: global score={data_drift['drift_score']:.3f} "
+                    f"for model v{deployment['model_version']}"
+                ),
+            )
+        if model_drift.get("drift_detected"):
+            deg = model_drift.get("f1_degradation")
+            f1 = model_drift.get("current_f1")
+            store.save_alert(
+                alert_type="MODEL_DRIFT_DETECTED",
+                severity="HIGH",
+                message=(
+                    f"Model drift detected: F1 degradation={deg:.3f}, "
+                    f"current_f1={f1:.3f} "
+                    f"for model v{deployment['model_version']}"
+                ),
+            )
+        return report_id
 
     # --- Dependency wiring ---
     active = fetch_active_deployment()
