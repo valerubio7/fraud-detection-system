@@ -116,6 +116,12 @@ class GrafanaSettings(_BaseServiceSettings):
     security_admin_password: str = Field(..., validation_alias="GF_SECURITY_ADMIN_PASSWORD")
 
 
+class ServingSettings(_BaseServiceSettings):
+    workers: int = Field(default=1, validation_alias="FASTAPI_WORKERS")
+    pg_pool_min_size: int = Field(default=2, validation_alias="PG_POOL_MIN_SIZE")
+    pg_pool_max_size: int = Field(default=10, validation_alias="PG_POOL_MAX_SIZE")
+
+
 SettingsT = TypeVar("SettingsT", bound=BaseSettings)
 
 
@@ -167,6 +173,7 @@ _SETTINGS_REGISTRY: dict[str, type[BaseSettings]] = {
     "model_settings": ModelSettings,
     "airflow_settings": AirflowSettings,
     "grafana_settings": GrafanaSettings,
+    "serving_settings": ServingSettings,
 }
 
 
@@ -187,6 +194,7 @@ __all__ = [
     "ModelSettings",
     "AirflowSettings",
     "GrafanaSettings",
+    "ServingSettings",
     "kafka_settings",  # noqa: F822
     "postgres_settings",  # noqa: F822
     "timescaledb_settings",  # noqa: F822
@@ -195,4 +203,5 @@ __all__ = [
     "model_settings",  # noqa: F822
     "airflow_settings",  # noqa: F822
     "grafana_settings",  # noqa: F822
+    "serving_settings",  # noqa: F822
 ]

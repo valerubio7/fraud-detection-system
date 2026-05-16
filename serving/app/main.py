@@ -20,7 +20,10 @@ async def lifespan(app: FastAPI):
     app.state.model_loader = loader
 
     dsn = config.postgres_settings.sqlalchemy_uri.replace("postgresql+psycopg2://", "postgresql://")
-    app.state.pg_pool = await asyncpg.create_pool(dsn=dsn, min_size=2, max_size=5)
+    s = config.serving_settings
+    app.state.pg_pool = await asyncpg.create_pool(
+        dsn=dsn, min_size=s.pg_pool_min_size, max_size=s.pg_pool_max_size
+    )
     app.state.prediction_store = PredictionStore(app.state.pg_pool, loader.deployment_id)
 
     app.state.prediction_cache = PredictionCache(
