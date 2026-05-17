@@ -1,0 +1,76 @@
+name: Build & Push Docker Images
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/valerubio7/fraud-detection-system
+
+jobs:
+  build-and-push:
+    name: Build & Push — ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: fastapi
+            dockerfile: docker/fastapi/Dockerfile
+            image: fraud-detection-fastapi
+          - name: consumer
+            dockerfile: docker/consumer/Dockerfile
+            image: fraud-detection-consumer
+          - name: inference
+            dockerfile: docker/inference_consumer/Dockerfile
+            image: fraud-detection-inference
+          - name: producer
+            dockerfile: docker/kafka/Dockerfile
+            image: fraud-detection-producer
+          - name: airflow
+            dockerfile: docker/airflow/Dockerfile
+            image: fraud-detection-airflow
+          - name: mlflow
+            dockerfile: docker/mlflow/Dockerfile
+            image: fraud-detection-mlflow
+          - name: grafana
+            dockerfile: docker/grafana/Dockerfile
+            image: fraud-detection-grafana
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
