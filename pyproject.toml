@@ -76,6 +76,7 @@ testing = [
   "evidently>=0.4.0,<0.5.0",
   "testcontainers[kafka,postgres,redis]>=4.0.0,<5.0.0",
   "locust>=2.28.0,<3.0.0",
+  "pytest-cov>=5.0.0,<6.0.0",
 ]
 
 [tool.pytest.ini_options]
@@ -84,6 +85,14 @@ asyncio_mode = "auto"
 markers = [
   "integration: marks tests as integration tests that require Docker (deselect with '-m not integration')",
 ]
+
+[tool.coverage.run]
+source = ["serving", "ingestion", "model", "feature_engineering", "mlops"]
+omit = ["*/tests/*", "*/migrations/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
 
 [tool.ruff]
 line-length = 100
