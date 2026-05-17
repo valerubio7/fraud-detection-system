@@ -1,16 +1,21 @@
 # ruff: noqa: E402
 import sys
 
-# The root conftest stubs heavy packages (redis, psycopg2, …) as MagicMocks so
-# unit tests can import serving/consumer modules without installing them. Remove
-# those stubs here so integration tests import the real installed packages.
+# The root conftest stubs heavy packages (redis, psycopg2, pandas, mlflow, …) as
+# MagicMocks so unit tests can import serving/consumer modules without installing
+# them. Remove those stubs here so integration tests import the real packages.
+_STUB_ROOTS = {
+    "asyncpg",
+    "joblib",
+    "mlflow",
+    "pandas",
+    "prometheus_fastapi_instrumentator",
+    "psycopg2",
+    "redis",
+}
 for _mod in list(sys.modules):
-    if (
-        _mod == "redis"
-        or _mod.startswith("redis.")
-        or _mod == "psycopg2"
-        or _mod.startswith("psycopg2.")
-    ):
+    root = _mod.split(".")[0]
+    if root in _STUB_ROOTS:
         del sys.modules[_mod]
 
 from pathlib import Path
