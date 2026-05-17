@@ -18,7 +18,23 @@ router = APIRouter(tags=["predictions"])
 _log = logging.getLogger(__name__)
 
 
-@router.post("/predict", response_model=PredictionResponse)
+@router.post(
+    "/predict",
+    response_model=PredictionResponse,
+    summary="Predecir fraude en una transacción",
+    description=(
+        "Evalúa una transacción bancaria y devuelve la probabilidad de fraude. "
+        "Las features deben ser pre-calculadas por el pipeline de feature engineering "
+        "(`SlidingWindowStore` + `HistoricalProfileStore`). "
+        "La predicción se guarda en PostgreSQL de forma asíncrona (no bloquea la respuesta). "
+        "Requests con el mismo `transaction_id` devuelven el resultado cacheado."
+    ),
+    responses={
+        200: {"description": "Predicción exitosa."},
+        422: {"description": "Request inválido: `amount` <= 0 o campos requeridos faltantes."},
+        503: {"description": "El modelo no está disponible (modo degradado)."},
+    },
+)
 async def predict(
     req: TransactionRequest, request: Request, background_tasks: BackgroundTasks
 ) -> PredictionResponse:
@@ -79,7 +95,23 @@ async def predict(
     return response
 
 
-@router.post("/predict/batch", response_model=BatchPredictionResponse)
+@router.post(
+    "/predict/batch",
+    response_model=BatchPredictionResponse,
+    summary="Predecir fraude en un batch de transacciones",
+    description=(
+        "Evalúa entre 1 y 500 transacciones en una sola llamada. "
+        "El batch se procesa vectorizando las features con `numpy.vstack` y una sola "
+        "llamada a `predict_proba`, lo que mejora el throughput respecto a llamadas individuales. "
+        "La latencia reportada es la del batch completo; la latencia por transacción "
+        "es `latency_ms / total`."
+    ),
+    responses={
+        200: {"description": "Predicciones del batch."},
+        422: {"description": "Lista vacía o con más de 500 items."},
+        503: {"description": "El modelo no está disponible."},
+    },
+)
 async def predict_batch(
     req: BatchPredictionRequest, request: Request, background_tasks: BackgroundTasks
 ) -> BatchPredictionResponse:

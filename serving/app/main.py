@@ -45,6 +45,26 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Fraud Detection Serving API",
     version="0.1.0",
+    description=(
+        "API de inferencia de fraude en tiempo real. "
+        "Clasifica transacciones bancarias como fraudulentas o legítimas "
+        "usando un modelo XGBoost con latencia P99 < 100ms bajo carga.\n\n"
+        "**Modelo**: cargado desde MLflow Registry (stage: Production) al startup. "
+        "Si no hay modelo en Production, la API inicia en modo degradado "
+        "y `/health` devuelve `status: degraded`.\n\n"
+        "**Idempotencia**: el mismo `transaction_id` devuelve siempre el mismo resultado "
+        "(cacheado en Redis por 5 minutos)."
+    ),
+    openapi_tags=[
+        {
+            "name": "health",
+            "description": "Estado del servicio y del modelo cargado en memoria.",
+        },
+        {
+            "name": "predictions",
+            "description": "Inferencia de fraude para transacciones individuales y en batch.",
+        },
+    ],
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,

@@ -6,7 +6,19 @@ import config
 router = APIRouter(tags=["health"])
 
 
-@router.get("/health")
+@router.get(
+    "/health",
+    summary="Estado del servicio",
+    description=(
+        "Devuelve el estado actual del servicio. "
+        "`status: ok` indica que el modelo está cargado y listo para inferencia. "
+        "`status: degraded` indica que el modelo no pudo cargarse al startup — "
+        "las predicciones no están disponibles pero el servicio sigue respondiendo."
+    ),
+    responses={
+        200: {"description": "Servicio operativo (ok o degraded)."},
+    },
+)
 def health(request: Request) -> JSONResponse:
     loader = getattr(request.app.state, "model_loader", None)
     model_loaded = loader is not None and loader._model is not None
@@ -15,7 +27,19 @@ def health(request: Request) -> JSONResponse:
     return JSONResponse({"status": status, "model_loaded": model_loaded}, status_code=status_code)
 
 
-@router.get("/model/info")
+@router.get(
+    "/model/info",
+    summary="Información del modelo cargado",
+    description=(
+        "Devuelve los metadatos del modelo XGBoost actualmente en memoria: "
+        "versión, stage de MLflow, timestamp de carga, threshold de clasificación, "
+        "e ID de deployment en PostgreSQL."
+    ),
+    responses={
+        200: {"description": "Información del modelo activo."},
+        503: {"description": "El modelo no está cargado — el servicio está en modo degradado."},
+    },
+)
 def model_info(request: Request) -> dict:
     loader = getattr(request.app.state, "model_loader", None)
     if loader is None or loader._model is None:
