@@ -77,11 +77,13 @@ testing = [
   "testcontainers[kafka,postgres,redis]>=4.0.0,<5.0.0",
   "locust>=2.28.0,<3.0.0",
   "pytest-cov>=5.0.0,<6.0.0",
+  "pytest-timeout>=2.3.0,<3.0.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+timeout = 300
 markers = [
   "integration: marks tests as integration tests that require Docker (deselect with '-m not integration')",
 ]

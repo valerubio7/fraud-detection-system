@@ -1,0 +1,50 @@
+name: Integration Tests
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  integration-tests:
+    name: Integration Tests (testcontainers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.4"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen \
+            --group testing \
+            --group serving \
+            --group consumer \
+            --group inference \
+            --group model
+
+      - name: Run integration tests
+        run: |
+          uv run pytest tests/integration/ \
+            -v \
+            --timeout=300 \
+            --tb=short
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: "true"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-results
+          path: "*.xml"
+          retention-days: 7
