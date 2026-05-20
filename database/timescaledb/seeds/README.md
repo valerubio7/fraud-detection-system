@@ -32,6 +32,20 @@ docker compose run --rm --no-deps --entrypoint python \
   --count 10000 --fraud-rate 0.02 --seed 42 --batch-size 500
 ```
 
+## Uso local
+
+Necesitas tener Python y `psycopg2` instalados (puede ser via `uv`). Asegurate de que TimescaleDB este levantado y expuesto en `localhost:5433`.
+
+```bash
+set -a; source .env; set +a
+export TIMESCALE_HOST=localhost
+export TIMESCALE_PORT=5433
+export PYTHONPATH="$(pwd)"
+
+uv run python database/timescaledb/seeds/seed_transactions.py \
+  --count 10000 --fraud-rate 0.02 --seed 42 --batch-size 500
+```
+
 ## Parámetros
 
 | Parámetro      | Default | Descripción                              |
