@@ -1,5 +1,5 @@
 -- ============================================================================
--- SECTION 1: Base table and hypertable
+-- Base table and hypertable
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS public.transactions (
@@ -39,9 +39,6 @@ EXCEPTION
 END
 $$;
 
--- ============================================================================
--- SECTION 2: Indexes
--- ============================================================================
 
 CREATE INDEX IF NOT EXISTS transactions_user_timestamp_idx
     ON public.transactions (user_id, "timestamp");
@@ -54,7 +51,7 @@ CREATE INDEX IF NOT EXISTS transactions_is_fraud_true_idx
     WHERE is_fraud IS TRUE;
 
 -- ============================================================================
--- SECTION 3: Continuous aggregates and refresh policies
+-- Continuous aggregates and refresh policies
 -- ============================================================================
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS public.fraud_volume_hourly
@@ -130,7 +127,7 @@ END
 $$;
 
 -- ============================================================================
--- SECTION 4: Compression
+-- Compression
 -- ============================================================================
 
 ALTER TABLE IF EXISTS public.transactions
@@ -161,7 +158,7 @@ END
 $$;
 
 -- ============================================================================
--- SECTION 5: Retention
+-- Retention
 -- ============================================================================
 
 DO $$
@@ -183,67 +180,3 @@ EXCEPTION
         NULL;
 END
 $$;
-
--- ============================================================================
--- VERIFICATION QUERIES (manual execution)
--- ============================================================================
-
--- 1) Table exists and columns are correct
--- SELECT
---     column_name,
---     data_type,
---     is_nullable
--- FROM information_schema.columns
--- WHERE table_schema = 'public'
---   AND table_name = 'transactions'
--- ORDER BY ordinal_position;
-
--- 2) Table is registered as hypertable
--- SELECT *
--- FROM timescaledb_information.hypertables
--- WHERE hypertable_schema = 'public'
---   AND hypertable_name = 'transactions';
-
--- 3) Indexes exist
--- SELECT
---     indexname,
---     indexdef
--- FROM pg_indexes
--- WHERE schemaname = 'public'
---   AND tablename = 'transactions'
--- ORDER BY indexname;
-
--- 4) Continuous aggregates exist and are active
--- SELECT *
--- FROM timescaledb_information.continuous_aggregates
--- WHERE view_schema = 'public'
---   AND view_name IN ('fraud_volume_hourly', 'merchant_amount_daily')
--- ORDER BY view_name;
-
--- 5) Continuous aggregate refresh policies exist
--- SELECT
---     job_id,
---     application_name,
---     proc_name,
---     schedule_interval,
---     hypertable_schema,
---     hypertable_name,
---     config
--- FROM timescaledb_information.jobs
--- WHERE proc_name = 'policy_refresh_continuous_aggregate'
--- ORDER BY job_id;
-
--- 6) Compression and retention policies are configured
--- SELECT
---     job_id,
---     application_name,
---     proc_name,
---     schedule_interval,
---     config,
---     hypertable_schema,
---     hypertable_name
--- FROM timescaledb_information.jobs
--- WHERE hypertable_schema = 'public'
---   AND hypertable_name = 'transactions'
---   AND proc_name IN ('policy_compression', 'policy_retention')
--- ORDER BY proc_name;

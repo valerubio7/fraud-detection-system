@@ -2,24 +2,6 @@
 
 Esquemas, migraciones, seeds, funciones y triggers para PostgreSQL (capa operacional/MLflow) y TimescaleDB (transacciones time-series).
 
-## Estructura
-
-```
-database/
-├── postgresql/                   # Datos operacionales y ML metadata
-│   ├── migrations/
-│   │   └── 001_initial_schema.sql
-│   ├── stored_procedures/
-│   │   └── 001_initial_stored_procedures.sql
-│   └── triggers/
-│       └── 001_initial_triggers.sql
-└── timescaledb/                  # Transacciones time-series
-    ├── migrations/
-    │   └── 001_initial_schema.sql
-    └── seeds/
-        └── seed_transactions.py
-```
-
 Las migraciones se ejecutan via `scripts/setup.sh` en orden alfabético. Son idempotentes (`IF NOT EXISTS`, `DROP TRIGGER IF EXISTS` antes de `CREATE`).
 
 ## PostgreSQL — Tablas operacionales
@@ -30,22 +12,33 @@ Las migraciones se ejecutan via `scripts/setup.sh` en orden alfabético. Son ide
 | `predictions_history` | Historial de inferencias: `transaction_id`, `model_version_id`, `prediction_score`, `prediction_label`, `actual_label` (opcional), `latency_ms` |
 | `drift_reports` | Resultados de análisis de drift: `drift_score`, `feature_drifts` (JSONB), `alert_triggered`, `remediation_action` |
 | `alert_log` | Log de alertas operacionales: tipo, severidad (`INFO`/`WARNING`/`HIGH`/`CRITICAL`), mensaje, acknowledgment |
-| `audit_log` | Traza de auditoría genérica vía triggers: tabla, operación, usuario, old/new values (JSONB) |
+
+### Indexes
+
+| Tabla | Índice | Tipo | Columnas |
+|---|---|---|---|
+| `model_deployments` | `idx_model_deployments_active` | B-tree parcial `WHERE is_active IS TRUE` | `created_at DESC` |
+| `predictions_history` | `idx_predictions_history_model_version_id` | B-tree | `model_version_id` |
+| `predictions_history` | `idx_predictions_history_timestamp` | B-tree | `timestamp` |
+| `predictions_history` | `idx_predictions_history_transaction_id` | B-tree | `transaction_id` |
+| `drift_reports` | `idx_drift_reports_report_date` | B-tree | `report_date` |
+| `drift_reports` | `idx_drift_reports_model_version_id` | B-tree | `model_version_id` |
+| `drift_reports` | `idx_drift_reports_alerts_true` | B-tree parcial `WHERE alert_triggered IS TRUE` | `report_date DESC` |
+| `alert_log` | `idx_alert_log_triggered_at` | B-tree | `triggered_at DESC` |
+| `alert_log` | `idx_alert_log_open_unack` | B-tree parcial `WHERE acknowledged_at IS NULL` | `triggered_at DESC` |
+| `alert_log` | `idx_alert_log_severity` | B-tree | `severity` |
 
 ### Stored Procedures
 
 | Función | Descripción |
 |---|---|
-| `activate_model_version(p_model_version_id)` | Desactiva todos los otros modelos activos, activa el especificado, logea en `audit_log` (usa `FOR UPDATE` para concurrencia) |
-| `calculate_model_metrics(p_model_version_id, p_date_from, p_date_to)` | Computa precision, recall, F1 comparando `prediction_label` vs `actual_label` (mínimo 100 registros) |
+| `activate_model_version(p_model_version_id)` | Desactiva todos los otros modelos activos y activa el especificado (usa `FOR UPDATE` para concurrencia) |
 
 ### Triggers
 
 | Trigger | Evento | Función |
 |---|---|---|
 | `alert_on_high_fraud_rate` | `AFTER INSERT` en `predictions_history` | Si la tasa de fraude de los últimos 15 min supera 5%, inserta alerta y emite `pg_notify('fraud_alerts', payload)` |
-| `audit_model_deployments` | `AFTER INSERT OR UPDATE OR DELETE` en `model_deployments` | Serializa old/new state en `audit_log` |
-| `audit_predictions_history` | `AFTER INSERT OR UPDATE OR DELETE` en `predictions_history` | Idem |
 
 ## TimescaleDB — Transacciones time-series
 
@@ -66,6 +59,15 @@ Almacena todas las transacciones crudas con particionado diario por `timestamp`.
 | `model_score` | `DOUBLE PRECISION` (nullable) |
 | `latency_ms` | `DOUBLE PRECISION` (nullable) |
 
+### Indexes
+
+| Índice | Tipo | Columnas |
+|---|---|---|
+| `transactions_pkey` | Primary Key compuesta (requerida por hypertable) | `(transaction_id, timestamp)` |
+| `transactions_user_timestamp_idx` | B-tree compuesto | `(user_id, timestamp)` |
+| `transactions_timestamp_idx` | B-tree | `(timestamp)` |
+| `transactions_is_fraud_true_idx` | B-tree parcial `WHERE is_fraud IS TRUE` | `(timestamp)` |
+
 ### Continuous Aggregates
 
 | Vista | Bucket | Métricas | Refresco |
@@ -82,10 +84,4 @@ Almacena todas las transacciones crudas con particionado diario por `timestamp`.
 
 ### Seeds
 
-`seed_transactions.py` genera transacciones sintéticas para desarrollo:
-
-```bash
-docker compose run --rm seed python database/timescaledb/seeds/seed_transactions.py --count 50000 --fraud-rate 0.02
-```
-
-Usa los mismos generadores que `ingestion.producer.generator` y los 4 patrones de fraude (amount_anomaly, unusual_country, high_frequency, unknown_merchant). Idempotente vía `ON CONFLICT DO NOTHING`.
+`seed_transactions.py` genera transacciones sintéticas para desarrollo.
