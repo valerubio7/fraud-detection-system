@@ -98,8 +98,6 @@ class TestDriftReportStoreIntegration:
 
     @pytest.fixture(autouse=True, scope="class")
     def setup_postgres(self):
-        import config as _config
-
         pg = PostgresContainer(
             image=POSTGRES_IMAGE,
             username="test_user",
@@ -145,7 +143,6 @@ class TestDriftReportStoreIntegration:
             }
             saved_env = {k: os.environ.get(k) for k in env_overrides}
             os.environ.update(env_overrides)
-            _config.__dict__.pop("postgres_settings", None)
 
             TestDriftReportStoreIntegration._pg_params = pg_params
             TestDriftReportStoreIntegration._deployment_id = deployment_id
@@ -158,7 +155,6 @@ class TestDriftReportStoreIntegration:
                         os.environ.pop(k, None)
                     else:
                         os.environ[k] = old_v
-                _config.__dict__.pop("postgres_settings", None)
 
     def test_save_persists_drift_report(self):
         """DriftReportStore.save() inserta una fila en drift_reports y devuelve su id."""

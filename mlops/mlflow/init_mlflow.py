@@ -83,7 +83,7 @@ def register_model_metadata(client: MlflowClient, model_name: str) -> None:
 
 
 def main() -> None:
-    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
     mlflow.set_tracking_uri(tracking_uri)
 
     print(f"Conectando a MLflow en {tracking_uri}...")

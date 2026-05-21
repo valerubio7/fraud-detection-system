@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from dataclasses import dataclass
@@ -16,7 +17,6 @@ from sklearn.metrics import f1_score, roc_auc_score
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import config  # noqa: E402
 from feature_engineering.offline.featurizer import TransactionFeaturizer  # noqa: E402
 from model.selected_features import SELECTED_FEATURES  # noqa: E402
 
@@ -50,13 +50,13 @@ class ChampionComparisonResult:
 
 def load_model(model_name: str, model_version: str) -> object:
     """Load a model version from MLflow Model Registry by name and version."""
-    mlflow.set_tracking_uri(config.mlflow_settings.tracking_uri)
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
     return _load_model_from_uri(f"models:/{model_name}/{model_version}")
 
 
 def load_champion_model(model_name: str) -> object | None:
     """Load the Production champion model, or None if no version is in Production."""
-    mlflow.set_tracking_uri(config.mlflow_settings.tracking_uri)
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
     client = MlflowClient()
     if not client.get_latest_versions(model_name, stages=["Production"]):
         return None
@@ -180,8 +180,13 @@ def compare_challenger_vs_champion(
 
 
 def _load_test_data() -> pd.DataFrame:
-    s = config.timescaledb_settings
-    conn = psycopg2.connect(host=s.host, port=s.port, user=s.user, password=s.password, dbname=s.db)
+    conn = psycopg2.connect(
+        host=os.getenv("TIMESCALE_HOST", "timescaledb"),
+        port=int(os.getenv("TIMESCALE_PORT", "5432")),
+        user=os.getenv("TIMESCALE_USER", "fraud_timeseries_user"),
+        password=os.getenv("TIMESCALE_PASSWORD"),
+        dbname=os.getenv("TIMESCALE_DB", "fraud_transactions_timeseries"),
+    )
     query = """
         SELECT transaction_id, user_id, merchant_id, merchant_category,
                amount, country, device_type, ip_hash, timestamp, is_fraud

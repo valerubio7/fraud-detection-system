@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import socket
 import subprocess
 import sys
@@ -24,7 +25,6 @@ from xgboost import XGBClassifier
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import config
 from feature_engineering.offline.featurizer import TransactionFeaturizer
 from feature_engineering.offline.imbalance import compute_scale_pos_weight
 from feature_engineering.offline.selection import select_features
@@ -96,13 +96,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_transactions(limit: int | None) -> pd.DataFrame:
-    settings = config.timescaledb_settings
     conn = psycopg2.connect(
-        host=settings.host,
-        port=settings.port,
-        user=settings.user,
-        password=settings.password,
-        dbname=settings.db,
+        host=os.getenv("TIMESCALE_HOST", "timescaledb"),
+        port=int(os.getenv("TIMESCALE_PORT", "5432")),
+        user=os.getenv("TIMESCALE_USER", "fraud_timeseries_user"),
+        password=os.getenv("TIMESCALE_PASSWORD"),
+        dbname=os.getenv("TIMESCALE_DB", "fraud_transactions_timeseries"),
     )
     query = """
         SELECT
@@ -280,9 +279,8 @@ def start_mlflow_run(
         raise RuntimeError("MLflow tracking is required for model registration.")
 
     try:
-        mlflow_settings = config.mlflow_settings
-        tracking_uri = mlflow_settings.tracking_uri
-        experiment_name = mlflow_settings.experiment_name
+        tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
+        experiment_name = os.getenv("MLFLOW_EXPERIMENT_NAME", "fraud-detection-v1")
         if not is_tracking_uri_available(tracking_uri):
             raise RuntimeError(f"MLflow tracking unavailable at {tracking_uri}")
         mlflow.set_tracking_uri(tracking_uri)
@@ -625,7 +623,7 @@ def main() -> None:
             evaluation_artifacts=evaluation_artifacts,
         )
         signature = infer_signature(X_train, model.predict(X_train))
-        model_name = config.model_settings.model_name
+        model_name = os.getenv("MODEL_NAME", "FraudDetectionModel")
         if not hasattr(model, "_estimator_type"):
             model._estimator_type = "classifier"
         model_info = mlflow.xgboost.log_model(

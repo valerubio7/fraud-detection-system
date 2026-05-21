@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from datetime import datetime
 
@@ -82,9 +83,7 @@ def validate_and_promote_model() -> None:
         import mlflow
         from mlflow.tracking import MlflowClient
 
-        import config
-
-        mlflow.set_tracking_uri(config.mlflow_settings.tracking_uri)
+        mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
         client = MlflowClient()
         version = model_params["model_version"]
         client.transition_model_version_stage(

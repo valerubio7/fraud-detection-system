@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -7,8 +8,6 @@ import joblib
 import numpy as np
 import psycopg2
 from mlflow.tracking import MlflowClient
-
-import config
 
 _ARTIFACTS_DIR = Path("/tmp/fraud_model")
 
@@ -28,16 +27,16 @@ class ModelLoader:
         self.loaded_at: datetime | None = None
 
     def load(self) -> None:
-        client = MlflowClient(tracking_uri=config.mlflow_settings.tracking_uri)
+        client = MlflowClient(tracking_uri=os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
 
         versions = client.get_latest_versions(
-            config.model_settings.model_name,
-            stages=[config.model_settings.model_stage],
+            os.getenv("MODEL_NAME", "FraudDetectionModel"),
+            stages=[os.getenv("MODEL_STAGE", "Production")],
         )
         if not versions:
             raise RuntimeError(
-                f"No model version found in stage '{config.model_settings.model_stage}' "
-                f"for model '{config.model_settings.model_name}'"
+                f"No model version found in stage '{os.getenv('MODEL_STAGE', 'Production')}' "
+                f"for model '{os.getenv('MODEL_NAME', 'FraudDetectionModel')}'"
             )
         version = versions[0]
 
@@ -51,13 +50,12 @@ class ModelLoader:
         self._country_map = self._encoder._country_enc.mapping_
         self._country_global = self._encoder._country_enc.global_mean_
 
-        pg = config.postgres_settings
         conn = psycopg2.connect(
-            host=pg.host,
-            port=pg.port,
-            user=pg.user,
-            password=pg.password,
-            dbname=pg.db,
+            host=os.getenv("POSTGRES_HOST", "postgresql"),
+            port=int(os.getenv("POSTGRES_PORT", "5432")),
+            user=os.getenv("POSTGRES_USER", "fraud_metadata_user"),
+            password=os.getenv("POSTGRES_PASSWORD"),
+            dbname=os.getenv("POSTGRES_DB", "fraud_metadata"),
         )
         try:
             with conn.cursor() as cur:
@@ -72,9 +70,9 @@ class ModelLoader:
             raise RuntimeError("No active deployment found in model_deployments")
         self.deployment_id = row[0]
 
-        self.model_name = config.model_settings.model_name
+        self.model_name = os.getenv("MODEL_NAME", "FraudDetectionModel")
         self.model_version = str(version.version)
-        self.model_stage = config.model_settings.model_stage
+        self.model_stage = os.getenv("MODEL_STAGE", "Production")
         self.loaded_at = datetime.now(UTC)
 
     def prepare_features(self, raw: dict, window_features: dict[str, float]) -> np.ndarray:

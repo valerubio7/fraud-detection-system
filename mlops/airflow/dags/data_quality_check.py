@@ -17,17 +17,23 @@ _log = logging.getLogger(__name__)
 
 
 def _pg_conn():
-    import config
-
-    s = config.postgres_settings
-    return psycopg2.connect(host=s.host, port=s.port, user=s.user, password=s.password, dbname=s.db)
+    return psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST", "postgresql"),
+        port=int(os.getenv("POSTGRES_PORT", "5432")),
+        user=os.getenv("POSTGRES_USER", "fraud_metadata_user"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+        dbname=os.getenv("POSTGRES_DB", "fraud_metadata"),
+    )
 
 
 def _ts_conn():
-    import config
-
-    s = config.timescaledb_settings
-    return psycopg2.connect(host=s.host, port=s.port, user=s.user, password=s.password, dbname=s.db)
+    return psycopg2.connect(
+        host=os.getenv("TIMESCALE_HOST", "timescaledb"),
+        port=int(os.getenv("TIMESCALE_PORT", "5432")),
+        user=os.getenv("TIMESCALE_USER", "fraud_timeseries_user"),
+        password=os.getenv("TIMESCALE_PASSWORD"),
+        dbname=os.getenv("TIMESCALE_DB", "fraud_transactions_timeseries"),
+    )
 
 
 def _insert_alert(conn, alert_type: str, severity: str, message: str) -> None:
@@ -50,7 +56,7 @@ def _insert_alert(conn, alert_type: str, severity: str, message: str) -> None:
 def data_quality_check() -> None:
     @task
     def check_transaction_volume() -> dict:
-        threshold = int(os.environ.get("MIN_TRANSACTIONS_PER_HOUR", "10"))
+        threshold = int(os.getenv("MIN_TRANSACTIONS_PER_HOUR", "10"))
 
         conn_ts = _ts_conn()
         try:
@@ -80,7 +86,7 @@ def data_quality_check() -> None:
 
     @task
     def check_prediction_rate() -> dict:
-        threshold = int(os.environ.get("MIN_PREDICTIONS_PER_HOUR", "5"))
+        threshold = int(os.getenv("MIN_PREDICTIONS_PER_HOUR", "5"))
 
         conn = _pg_conn()
         try:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 import pandas as pd
@@ -26,10 +27,13 @@ _MIN_LABELED_ROWS = 50
 def fetch_labeled_predictions(deployment_id: int, lookback_days: int = 7) -> pd.DataFrame:
     import psycopg2
 
-    import config
-
-    s = config.postgres_settings
-    conn = psycopg2.connect(host=s.host, port=s.port, user=s.user, password=s.password, dbname=s.db)
+    conn = psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST", "postgresql"),
+        port=int(os.getenv("POSTGRES_PORT", "5432")),
+        user=os.getenv("POSTGRES_USER", "fraud_metadata_user"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+        dbname=os.getenv("POSTGRES_DB", "fraud_metadata"),
+    )
     try:
         with conn.cursor() as cur:
             cur.execute(

@@ -1,12 +1,12 @@
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
+from urllib.parse import quote_plus
 
 import asyncpg
 from fastapi import FastAPI, Request
 from prometheus_fastapi_instrumentator import Instrumentator
-
-import config
 
 from .routes.health import router as health_router
 from .routes.predict import router as predict_router
@@ -27,15 +27,22 @@ async def lifespan(app: FastAPI):
 
     app.state.model_loader = loader
 
-    dsn = config.postgres_settings.sqlalchemy_uri.replace("postgresql+psycopg2://", "postgresql://")
-    s = config.serving_settings
+    _pg_user = quote_plus(os.getenv("POSTGRES_USER", "fraud_metadata_user"))
+    _pg_password = quote_plus(os.getenv("POSTGRES_PASSWORD"))
+    _pg_host = os.getenv("POSTGRES_HOST", "postgresql")
+    _pg_port = os.getenv("POSTGRES_PORT", "5432")
+    _pg_db = os.getenv("POSTGRES_DB", "fraud_metadata")
+    dsn = f"postgresql://{_pg_user}:{_pg_password}@{_pg_host}:{_pg_port}/{_pg_db}"
     app.state.pg_pool = await asyncpg.create_pool(
-        dsn=dsn, min_size=s.pg_pool_min_size, max_size=s.pg_pool_max_size
+        dsn=dsn,
+        min_size=int(os.getenv("PG_POOL_MIN_SIZE", "2")),
+        max_size=int(os.getenv("PG_POOL_MAX_SIZE", "10")),
     )
     app.state.prediction_store = PredictionStore(app.state.pg_pool, loader.deployment_id)
 
     app.state.prediction_cache = PredictionCache(
-        config.redis_settings.host, config.redis_settings.port
+        os.getenv("REDIS_HOST", "redis"),
+        int(os.getenv("REDIS_PORT", "6379")),
     )
     yield
 

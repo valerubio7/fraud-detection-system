@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 
 class DriftReportStore:
     def save(
@@ -19,8 +21,6 @@ class DriftReportStore:
 
         import psycopg2
 
-        import config
-
         combined_feature_drifts = {
             "data_drift": feature_drifts,
             "model_drift": {
@@ -28,9 +28,12 @@ class DriftReportStore:
                 "f1_degradation": model_f1_degradation,
             },
         }
-        s = config.postgres_settings
         conn = psycopg2.connect(
-            host=s.host, port=s.port, user=s.user, password=s.password, dbname=s.db
+            host=os.getenv("POSTGRES_HOST", "postgresql"),
+            port=int(os.getenv("POSTGRES_PORT", "5432")),
+            user=os.getenv("POSTGRES_USER", "fraud_metadata_user"),
+            password=os.getenv("POSTGRES_PASSWORD"),
+            dbname=os.getenv("POSTGRES_DB", "fraud_metadata"),
         )
         try:
             with conn.cursor() as cur:
@@ -60,11 +63,12 @@ class DriftReportStore:
         """Inserta una entrada en alert_log."""
         import psycopg2
 
-        import config
-
-        s = config.postgres_settings
         conn = psycopg2.connect(
-            host=s.host, port=s.port, user=s.user, password=s.password, dbname=s.db
+            host=os.getenv("POSTGRES_HOST", "postgresql"),
+            port=int(os.getenv("POSTGRES_PORT", "5432")),
+            user=os.getenv("POSTGRES_USER", "fraud_metadata_user"),
+            password=os.getenv("POSTGRES_PASSWORD"),
+            dbname=os.getenv("POSTGRES_DB", "fraud_metadata"),
         )
         try:
             with conn.cursor() as cur:

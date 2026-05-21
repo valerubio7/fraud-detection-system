@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Any
 
@@ -34,11 +35,12 @@ class TimescaleExtractOperator(BaseOperator):
         import pandas as pd
         import psycopg2
 
-        import config
-
-        s = getattr(config, self.conn_settings_fn)
         conn = psycopg2.connect(
-            host=s.host, port=s.port, user=s.user, password=s.password, dbname=s.db
+            host=os.getenv("TIMESCALE_HOST", "timescaledb"),
+            port=int(os.getenv("TIMESCALE_PORT", "5432")),
+            user=os.getenv("TIMESCALE_USER", "fraud_timeseries_user"),
+            password=os.getenv("TIMESCALE_PASSWORD"),
+            dbname=os.getenv("TIMESCALE_DB", "fraud_transactions_timeseries"),
         )
         try:
             df = pd.read_sql(self.sql, conn)
@@ -76,13 +78,11 @@ class MLflowRegisterModelOperator(BaseOperator):
     def execute(self, context: dict) -> str:
         from mlflow.tracking import MlflowClient
 
-        import config
-
         model_version = context["ti"].xcom_pull(
             task_ids=self.model_version_xcom_task_id,
             key=self.model_version_xcom_key,
         )
-        client = MlflowClient(tracking_uri=config.mlflow_settings.tracking_uri)
+        client = MlflowClient(tracking_uri=os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
         client.transition_model_version_stage(
             name=self.model_name,
             version=str(model_version),

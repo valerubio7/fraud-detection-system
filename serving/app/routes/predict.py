@@ -1,11 +1,10 @@
 import json
 import logging
+import os
 import time
 
 import numpy as np
 from fastapi import APIRouter, BackgroundTasks, Request
-
-import config
 
 from ..schemas.prediction import (
     BatchPredictionRequest,
@@ -62,7 +61,7 @@ async def predict(
     prediction_score = float(model_loader._model.predict_proba(features_array)[0, 1])
     inference_ms = (time.perf_counter() - t1) * 1000
 
-    prediction_label = prediction_score >= config.model_settings.fraud_score_threshold
+    prediction_label = prediction_score >= float(os.getenv("FRAUD_SCORE_THRESHOLD", "0.5"))
     latency_ms = feature_ms + inference_ms
 
     background_tasks.add_task(
@@ -70,7 +69,7 @@ async def predict(
     )
 
     total_ms = latency_ms
-    threshold = config.model_settings.slow_request_threshold_ms
+    threshold = float(os.getenv("SLOW_REQUEST_THRESHOLD_MS", "50.0"))
     log_payload = {
         "event": "predict",
         "transaction_id": req.transaction_id,
@@ -117,7 +116,7 @@ async def predict_batch(
 ) -> BatchPredictionResponse:
     model_loader = request.app.state.model_loader
     prediction_store = request.app.state.prediction_store
-    threshold_score = config.model_settings.fraud_score_threshold
+    threshold_score = float(os.getenv("FRAUD_SCORE_THRESHOLD", "0.5"))
     n = len(req.items)
 
     t0 = time.perf_counter()
@@ -157,7 +156,7 @@ async def predict_batch(
         )
 
     total_ms = feature_ms + inference_ms
-    threshold_slow = config.model_settings.slow_request_threshold_ms
+    threshold_slow = float(os.getenv("SLOW_REQUEST_THRESHOLD_MS", "50.0"))
     log_payload = {
         "event": "predict_batch",
         "batch_size": n,

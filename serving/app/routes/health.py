@@ -1,7 +1,7 @@
+import os
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
-
-import config
 
 router = APIRouter(tags=["health"])
 
@@ -49,6 +49,6 @@ def model_info(request: Request) -> dict:
         "model_version": loader.model_version,
         "model_stage": loader.model_stage,
         "loaded_at": loader.loaded_at.isoformat(),
-        "fraud_score_threshold": config.model_settings.fraud_score_threshold,
+        "fraud_score_threshold": float(os.getenv("FRAUD_SCORE_THRESHOLD", "0.5")),
         "deployment_id": loader.deployment_id,
     }

@@ -30,15 +30,12 @@ PROMOTE_DAG_ID = "validate_and_promote_model"
 def retrain_fraud_model() -> None:
     @task
     def validate_data_availability() -> dict:
-        import config
-
-        s = config.timescaledb_settings
         conn = psycopg2.connect(
-            host=s.host,
-            port=s.port,
-            user=s.user,
-            password=s.password,
-            dbname=s.db,
+            host=os.getenv("TIMESCALE_HOST", "timescaledb"),
+            port=int(os.getenv("TIMESCALE_PORT", "5432")),
+            user=os.getenv("TIMESCALE_USER", "fraud_timeseries_user"),
+            password=os.getenv("TIMESCALE_PASSWORD"),
+            dbname=os.getenv("TIMESCALE_DB", "fraud_transactions_timeseries"),
         )
         try:
             with conn.cursor() as cur:
@@ -67,8 +64,6 @@ def retrain_fraud_model() -> None:
         import mlflow
         from mlflow.tracking import MlflowClient
 
-        import config
-
         result = subprocess.run(
             [
                 sys.executable,
@@ -95,9 +90,9 @@ def retrain_fraud_model() -> None:
                 run_id = match.group(1)
                 break
 
-        mlflow.set_tracking_uri(config.mlflow_settings.tracking_uri)
+        mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
         client = MlflowClient()
-        model_name = config.model_settings.model_name
+        model_name = os.getenv("MODEL_NAME", "FraudDetectionModel")
         versions = client.get_latest_versions(model_name, stages=["Staging"])
         if not versions:
             raise RuntimeError(

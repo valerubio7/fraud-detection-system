@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -35,19 +36,20 @@ _PRODUCTION_SQL = """
 
 
 def _pg_conn():
-    import config
-
-    s = config.postgres_settings
-    return psycopg2.connect(host=s.host, port=s.port, user=s.user, password=s.password, dbname=s.db)
+    return psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST", "postgresql"),
+        port=int(os.getenv("POSTGRES_PORT", "5432")),
+        user=os.getenv("POSTGRES_USER", "fraud_metadata_user"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+        dbname=os.getenv("POSTGRES_DB", "fraud_metadata"),
+    )
 
 
 def _download_encoder(run_id: str) -> Path:
     import mlflow
     from mlflow.tracking import MlflowClient
 
-    import config
-
-    mlflow.set_tracking_uri(config.mlflow_settings.tracking_uri)
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
     client = MlflowClient()
     encoder_dir = Path(ENCODER_DST_DIR)
     encoder_dir.mkdir(parents=True, exist_ok=True)
@@ -96,11 +98,9 @@ def drift_detection_report() -> None:
 
     @task
     def featurize_reference(active: dict) -> str:
-        import config
-
         ref_df = load_reference_dataset(
             run_id=active["mlflow_run_id"],
-            tracking_uri=config.mlflow_settings.tracking_uri,
+            tracking_uri=os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"),
         )
         ref_df[SELECTED_FEATURES].to_parquet(REFERENCE_PARQUET, index=False)
         return REFERENCE_PARQUET
@@ -136,12 +136,14 @@ def drift_detection_report() -> None:
     def run_model_drift_task(deployment: dict) -> dict:
         import psycopg2
 
-        import config
         from mlops.evidently.model_drift import fetch_labeled_predictions, run_model_drift_report
 
-        s = config.postgres_settings
         conn = psycopg2.connect(
-            host=s.host, port=s.port, user=s.user, password=s.password, dbname=s.db
+            host=os.getenv("POSTGRES_HOST", "postgresql"),
+            port=int(os.getenv("POSTGRES_PORT", "5432")),
+            user=os.getenv("POSTGRES_USER", "fraud_metadata_user"),
+            password=os.getenv("POSTGRES_PASSWORD"),
+            dbname=os.getenv("POSTGRES_DB", "fraud_metadata"),
         )
         try:
             with conn.cursor() as cur:
@@ -173,7 +175,6 @@ def drift_detection_report() -> None:
         import pandas as pd
         from mlflow.tracking import MlflowClient
 
-        import config
         from mlops.evidently.data_drift import run_data_drift_report_with_html
         from mlops.evidently.html_exporter import upload_report_to_mlflow
         from model.selected_features import SELECTED_FEATURES
@@ -182,19 +183,18 @@ def drift_detection_report() -> None:
         cur_df = pd.read_parquet(PRODUCTION_PARQUET)
         _, html_path = run_data_drift_report_with_html(ref_df, cur_df, SELECTED_FEATURES)
 
-        client = MlflowClient(tracking_uri=config.mlflow_settings.tracking_uri)
+        client = MlflowClient(tracking_uri=os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
         mv = client.get_model_version(deployment["model_name"], deployment["model_version"])
         artifact_uri = upload_report_to_mlflow(
             run_id=mv.run_id,
             html_path=html_path,
             artifact_subfolder=f"drift_reports/report_{report_id}",
-            tracking_uri=config.mlflow_settings.tracking_uri,
+            tracking_uri=os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"),
         )
         return {"artifact_uri": artifact_uri, "report_id": report_id}
 
     @task
     def save_report_to_postgresql(deployment: dict, data_drift: dict, model_drift: dict) -> int:
-        import config
         from mlops.evidently.drift_store import DriftReportStore
         from mlops.evidently.thresholds import evaluate_drift_action, trigger_retrain_dag
 
@@ -209,7 +209,7 @@ def drift_detection_report() -> None:
             )
 
         if action.trigger_retraining:
-            trigger_retrain_dag(config.mlflow_settings.tracking_uri)
+            trigger_retrain_dag(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
 
         report_id = store.save(
             deployment_id=deployment["deployment_id"],

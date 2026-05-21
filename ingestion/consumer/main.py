@@ -9,8 +9,6 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from config import kafka_settings, redis_settings, timescaledb_settings
-
 from .feature_publisher import FeaturePublisher
 from .historical_store import HistoricalProfileStore
 from .kafka_consumer import TransactionConsumer
@@ -63,27 +61,27 @@ def main() -> None:
     window_max_seconds = SEVEN_DAYS_SECONDS
     schema_path = Path(__file__).resolve().parents[1] / "schemas" / "transaction_features.avsc"
     consumer = TransactionConsumer(
-        broker_url=kafka_settings.broker_url,
-        topic=kafka_settings.topics_raw,
+        broker_url=os.getenv("KAFKA_BROKER_URL", "kafka:29092"),
+        topic=os.getenv("KAFKA_TOPICS_RAW", "transactions.raw"),
         group_id="fraud-feature-engineering",
     )
     window_store = SlidingWindowStore(max_window_seconds=window_max_seconds)
     historical_store = HistoricalProfileStore()
     redis_store = RedisFeatureStore(
-        host=redis_settings.host,
-        port=redis_settings.port,
+        host=os.getenv("REDIS_HOST", "redis"),
+        port=int(os.getenv("REDIS_PORT", "6379")),
     )
     feature_publisher = FeaturePublisher(
-        broker_url=kafka_settings.broker_url,
-        topic=kafka_settings.topics_features,
+        broker_url=os.getenv("KAFKA_BROKER_URL", "kafka:29092"),
+        topic=os.getenv("KAFKA_TOPICS_FEATURES", "transactions.features"),
         schema_path=str(schema_path),
     )
     timescale_writer = TimescaleWriter(
-        host=timescaledb_settings.host,
-        port=timescaledb_settings.port,
-        user=timescaledb_settings.user,
-        password=timescaledb_settings.password,
-        db=timescaledb_settings.db,
+        host=os.getenv("TIMESCALE_HOST", "timescaledb"),
+        port=int(os.getenv("TIMESCALE_PORT", "5432")),
+        user=os.getenv("TIMESCALE_USER", "fraud_timeseries_user"),
+        password=os.getenv("TIMESCALE_PASSWORD"),
+        db=os.getenv("TIMESCALE_DB", "fraud_transactions_timeseries"),
     )
     initialized_users: set[str] = set()
 

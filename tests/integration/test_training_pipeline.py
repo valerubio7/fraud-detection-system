@@ -150,8 +150,6 @@ class TestTrainingPipelineIntegration:
 
     @pytest.fixture(autouse=True, scope="class")
     def setup_containers(self):
-        import config as _config
-
         tsdb = PostgresContainer(
             image=TIMESCALEDB_IMAGE,
             username="test_user",
@@ -190,11 +188,6 @@ class TestTrainingPipelineIntegration:
             saved_env = {k: os.environ.get(k) for k in env_overrides}
             os.environ.update(env_overrides)
 
-            # Clear any previously cached settings so the lazy loader re-reads
-            # with the new env vars.
-            _config.__dict__.pop("timescaledb_settings", None)
-            _config.__dict__.pop("postgres_settings", None)
-
             mlflow.set_tracking_uri(f"file://{MLFLOW_TRACKING_DIR}")
 
             TestTrainingPipelineIntegration._tsdb_params = tsdb_params
@@ -208,8 +201,6 @@ class TestTrainingPipelineIntegration:
                         os.environ.pop(k, None)
                     else:
                         os.environ[k] = old_v
-                _config.__dict__.pop("timescaledb_settings", None)
-                _config.__dict__.pop("postgres_settings", None)
                 shutil.rmtree(MLFLOW_TRACKING_DIR, ignore_errors=True)
 
     # -----------------------------------------------------------------------

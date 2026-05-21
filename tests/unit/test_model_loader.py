@@ -1,3 +1,4 @@
+import os
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
@@ -139,47 +140,62 @@ class TestPrepareFeatures:
 
 
 class TestModelLoaderLoad:
-    def _make_mock_config(self):
-        mock_config = MagicMock()
-        mock_config.mlflow_settings.tracking_uri = "http://test-mlflow:5000"
-        mock_config.model_settings.model_name = "TestModel"
-        mock_config.model_settings.model_stage = "Production"
-        mock_config.postgres_settings.host = "localhost"
-        mock_config.postgres_settings.port = 5432
-        mock_config.postgres_settings.user = "test"
-        mock_config.postgres_settings.password = "test"
-        mock_config.postgres_settings.db = "test"
-        return mock_config
+    def _setup_env(self):
+        self._saved_env = {}
+        env_vars = {
+            "MLFLOW_TRACKING_URI": "http://test-mlflow:5000",
+            "MODEL_NAME": "TestModel",
+            "MODEL_STAGE": "Production",
+            "POSTGRES_HOST": "localhost",
+            "POSTGRES_PORT": "5432",
+            "POSTGRES_USER": "test",
+            "POSTGRES_PASSWORD": "test",
+            "POSTGRES_DB": "test",
+        }
+        for k, v in env_vars.items():
+            self._saved_env[k] = os.environ.get(k)
+            os.environ[k] = v
+
+    def _teardown_env(self):
+        for k, old_v in self._saved_env.items():
+            if old_v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = old_v
 
     def test_load_raises_if_no_production_model(self):
-        loader = ModelLoader()
-        mock_client = MagicMock()
-        mock_client.get_latest_versions.return_value = []
+        self._setup_env()
+        try:
+            loader = ModelLoader()
+            mock_client = MagicMock()
+            mock_client.get_latest_versions.return_value = []
 
-        with (
-            patch("serving.app.services.model_loader.MlflowClient", return_value=mock_client),
-            patch("serving.app.services.model_loader.config", self._make_mock_config()),
-        ):
-            with pytest.raises(RuntimeError, match="[Pp]roduction"):
-                loader.load()
+            with patch("serving.app.services.model_loader.MlflowClient", return_value=mock_client):
+                with pytest.raises(RuntimeError, match="[Pp]roduction"):
+                    loader.load()
+        finally:
+            self._teardown_env()
 
     def test_load_raises_if_no_active_deployment(self):
-        loader = ModelLoader()
-        mock_version = MagicMock()
-        mock_version.run_id = "run_abc"
-        mock_version.version = "5"
-        mock_client = MagicMock()
-        mock_client.get_latest_versions.return_value = [mock_version]
+        self._setup_env()
+        try:
+            loader = ModelLoader()
+            mock_version = MagicMock()
+            mock_version.run_id = "run_abc"
+            mock_version.version = "5"
+            mock_client = MagicMock()
+            mock_client.get_latest_versions.return_value = [mock_version]
 
-        mock_conn = MagicMock()
-        mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
-        mock_cursor.fetchone.return_value = None
+            mock_conn = MagicMock()
+            mock_cursor = mock_conn.cursor.return_value.__enter__.return_value
+            mock_cursor.fetchone.return_value = None
 
-        with (
-            patch("serving.app.services.model_loader.MlflowClient", return_value=mock_client),
-            patch("serving.app.services.model_loader.joblib.load", return_value=MagicMock()),
-            patch("serving.app.services.model_loader.psycopg2.connect", return_value=mock_conn),
-            patch("serving.app.services.model_loader.config", self._make_mock_config()),
-        ):
-            with pytest.raises(RuntimeError, match="[Dd]eployment"):
-                loader.load()
+            with (
+                patch("serving.app.services.model_loader.MlflowClient", return_value=mock_client),
+                patch("serving.app.services.model_loader.joblib.load", return_value=MagicMock()),
+                patch("serving.app.services.model_loader.psycopg2.connect", return_value=mock_conn),
+            ):
+                with pytest.raises(RuntimeError, match="[Dd]eployment"):
+                    loader.load()
+        finally:
+            self._teardown_env()

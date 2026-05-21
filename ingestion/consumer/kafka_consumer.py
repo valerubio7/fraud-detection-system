@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 from collections import deque
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,7 +12,6 @@ from typing import Any
 from confluent_kafka import Consumer, KafkaException, Message
 from fastavro import parse_schema, schemaless_reader
 
-from config import kafka_settings
 from ingestion.models import Transaction
 
 logger = logging.getLogger(__name__)
@@ -25,8 +25,8 @@ class TransactionConsumer:
 
     def __init__(
         self,
-        broker_url: str = kafka_settings.broker_url,
-        topic: str = kafka_settings.topics_raw,
+        broker_url: str = os.getenv("KAFKA_BROKER_URL", "kafka:29092"),
+        topic: str = os.getenv("KAFKA_TOPICS_RAW", "transactions.raw"),
         group_id: str = DEFAULT_GROUP_ID,
         schema_path: str | Path = DEFAULT_SCHEMA_PATH,
         auto_offset_reset: str = "earliest",

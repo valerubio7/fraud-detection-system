@@ -8,8 +8,6 @@ import signal
 import threading
 import time
 
-from config import kafka_settings
-
 from .alert_publisher import AlertPublisher
 from .api_client import InferenceApiClient
 from .circuit_breaker import CircuitBreaker
@@ -54,17 +52,17 @@ def main() -> None:
     configure_logging()
 
     consumer = FeaturesConsumer(
-        broker_url=kafka_settings.broker_url,
-        topic=kafka_settings.topics_features,
+        broker_url=os.getenv("KAFKA_BROKER_URL", "kafka:29092"),
+        topic=os.getenv("KAFKA_TOPICS_FEATURES", "transactions.features"),
     )
     api_client = InferenceApiClient(base_url=FASTAPI_BASE_URL)
     publisher = PredictionPublisher(
-        broker_url=kafka_settings.broker_url,
-        topic=kafka_settings.topics_predictions,
+        broker_url=os.getenv("KAFKA_BROKER_URL", "kafka:29092"),
+        topic=os.getenv("KAFKA_TOPICS_PREDICTIONS", "transactions.predictions"),
     )
     alert_publisher = AlertPublisher(
-        broker_url=kafka_settings.broker_url,
-        topic=kafka_settings.topics_alerts,
+        broker_url=os.getenv("KAFKA_BROKER_URL", "kafka:29092"),
+        topic=os.getenv("KAFKA_TOPICS_ALERTS", "transactions.fraud.alerts"),
     )
     circuit_breaker = CircuitBreaker(
         failure_threshold=INFERENCE_FAILURE_THRESHOLD,

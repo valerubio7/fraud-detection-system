@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -10,8 +11,6 @@ import psycopg2
 from mlflow.tracking import MlflowClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import config  # noqa: E402
 
 
 @dataclass
@@ -25,8 +24,7 @@ class PromotionResult:
 
 def promote_to_production(model_name: str, model_version: str) -> PromotionResult:
     """Promote a model version from Staging to Production."""
-    mlflow_settings = config.mlflow_settings
-    client = MlflowClient(tracking_uri=mlflow_settings.tracking_uri)
+    client = MlflowClient(tracking_uri=os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
 
     mv, run_id = _verify_staging_version(client, model_name, model_version)
     run_metrics, run_params, run_start = _fetch_run_metadata(client, run_id)
@@ -99,8 +97,13 @@ def _record_deployment_in_db(
     training_data_from: datetime,
     training_data_to: datetime,
 ) -> int:
-    s = config.postgres_settings
-    conn = psycopg2.connect(host=s.host, port=s.port, user=s.user, password=s.password, dbname=s.db)
+    conn = psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST", "postgresql"),
+        port=int(os.getenv("POSTGRES_PORT", "5432")),
+        user=os.getenv("POSTGRES_USER", "fraud_metadata_user"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+        dbname=os.getenv("POSTGRES_DB", "fraud_metadata"),
+    )
     try:
         with conn.cursor() as cur:
             cur.execute(
