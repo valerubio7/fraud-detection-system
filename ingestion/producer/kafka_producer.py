@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from datetime import UTC
 from typing import Any
 
 from ingestion.avro_producer import AvroKafkaProducer
 from ingestion.models import Transaction
-from ingestion.utils import ensure_utc
 
 
 class TransactionProducer(AvroKafkaProducer):
@@ -38,7 +38,7 @@ class TransactionProducer(AvroKafkaProducer):
 
     @staticmethod
     def _transaction_to_dict(transaction: Transaction) -> dict[str, Any]:
-        timestamp = ensure_utc(transaction.timestamp)
+        timestamp = transaction.timestamp.astimezone(UTC)
         return {
             "transaction_id": transaction.transaction_id,
             "user_id": transaction.user_id,

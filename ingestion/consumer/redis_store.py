@@ -8,7 +8,6 @@ from typing import Any
 import redis
 
 from ingestion.models import Transaction
-from ingestion.utils import ensure_utc
 
 logger = logging.getLogger(__name__)
 
@@ -154,16 +153,14 @@ class RedisFeatureStore:
             "merchant_category": transaction.merchant_category,
             "amount": float(transaction.amount),
             "country": transaction.country,
-            "timestamp": ensure_utc(transaction.timestamp).isoformat(),
+            "timestamp": transaction.timestamp.astimezone(UTC).isoformat(),
             "device_type": transaction.device_type,
             "ip_hash": transaction.ip_hash,
         }
 
     @staticmethod
     def _deserialize_transaction(payload: dict[str, Any]) -> Transaction:
-        return Transaction.from_dict(
-            payload, RedisFeatureStore._parse_timestamp(payload["timestamp"])
-        )
+        return Transaction.from_dict(payload, RedisFeatureStore._parse_timestamp(payload["timestamp"]))
 
     @staticmethod
     def _parse_timestamp(value: Any) -> datetime:

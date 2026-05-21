@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import UTC
 from typing import Any
 
 from ingestion.avro_producer import AvroKafkaProducer
 from ingestion.models import Transaction
-from ingestion.utils import ensure_utc
 
 from .features import HistoricalFeatures, WindowFeatures
 
@@ -58,7 +58,7 @@ class FeaturePublisher(AvroKafkaProducer):
         window_features: WindowFeatures,
         historical_features: HistoricalFeatures,
     ) -> dict[str, Any]:
-        timestamp = ensure_utc(transaction.timestamp)
+        timestamp = transaction.timestamp.astimezone(UTC)
         return {
             "transaction_id": transaction.transaction_id,
             "user_id": transaction.user_id,

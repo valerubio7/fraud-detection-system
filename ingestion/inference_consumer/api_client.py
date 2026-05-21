@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import httpx
+from datetime import UTC
 
-from ingestion.utils import ensure_utc
+import httpx
 
 
 class InferenceApiClient:
@@ -27,7 +27,7 @@ class InferenceApiClient:
             "merchant_category": message["merchant_category"],
             "amount": message["amount"],
             "country": message["country"],
-            "timestamp": ensure_utc(message["timestamp"]).isoformat(),
+            "timestamp": message["timestamp"].astimezone(UTC).isoformat(),
             "device_type": message["device_type"],
             "ip_hash": message["ip_hash"],
             "features": message["features"],
