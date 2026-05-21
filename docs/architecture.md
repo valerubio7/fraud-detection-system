@@ -94,8 +94,6 @@ La API carga el modelo XGBoost en Production desde MLflow Registry al startup (`
 - `predictions_history`: predicción por transacción con `latency_ms` y `deployment_id` (FK).
 - `drift_reports`: reportes de Evidently con `drift_score` global y `feature_drifts` JSONB (drill-down por feature).
 - `alert_log`: alertas del sistema con severidad y timestamp de acknowledgment.
-- `audit_log`: trigger genérico que registra toda modificación a `model_deployments` y `predictions_history`.
-- Stored procedure `activate_model_version(id)`: desactiva todas las versiones anteriores y activa la nueva en una transacción atómica.
 
 ### MLOps
 
@@ -118,7 +116,7 @@ Las 4 alertas de Grafana Unified Alerting usan el pipeline A → B → C: A (que
 Se usaron dos bases de datos diferentes para separar patrones de acceso incompatibles:
 
 - TimescaleDB para el stream de transacciones: escrituras de alta frecuencia con timestamp, queries temporales con funciones propias (`time_bucket`, continuous aggregates, chunk pruning). PostgreSQL estándar no tiene estas optimizaciones.
-- PostgreSQL para metadata MLOps: datos relacionales, transacciones ACID, stored procedures, triggers de auditoría. TimescaleDB hereda todas las capacidades de PostgreSQL, pero las extensiones de serie temporal no agregan valor aquí.
+- PostgreSQL para metadata MLOps: datos relacionales, transacciones ACID, stored procedures. TimescaleDB hereda todas las capacidades de PostgreSQL, pero las extensiones de serie temporal no agregan valor aquí.
 
 ### Redis con circuit breaker en el Consumer
 

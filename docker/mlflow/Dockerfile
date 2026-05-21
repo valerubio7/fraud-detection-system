@@ -7,3 +7,6 @@ ENV UV_SYSTEM_PYTHON=1 \
 COPY --from=ghcr.io/astral-sh/uv:0.9.4 /uv /uvx /bin/
 
 RUN uv pip install --no-cache-dir psycopg2-binary==2.9.9
+
+WORKDIR /app
+COPY mlops/mlflow/init_mlflow.py mlops/mlflow/init_mlflow.py

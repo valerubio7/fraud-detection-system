@@ -89,7 +89,7 @@ Se implemento la migracion `database/timescaledb/migrations/001_initial_schema.s
 
 Se incluyeron queries de verificacion manual para validar tablas, indices y policies.
 
-### 2.2 PostgreSQL: metadata y auditoria
+### 2.2 PostgreSQL: metadata operacional
 
 Se creo la migracion `database/postgresql/migrations/001_initial_schema.sql` con tablas operativas:
 
@@ -97,21 +97,17 @@ Se creo la migracion `database/postgresql/migrations/001_initial_schema.sql` con
 - `predictions_history`: historico de predicciones y latencia.
 - `drift_reports`: reportes de drift por feature.
 - `alert_log`: alertas operativas.
-- `audit_log`: auditoria de cambios.
 
 Se agregaron constraints y checks para asegurar calidad de datos (rangos de scores, orden temporal, severities permitidas). Tambien se crearon indices para consultas frecuentes por fecha, version y estado.
 
 En `database/postgresql/stored_procedures/001_initial_stored_procedures.sql` se incorporaron funciones:
 
-- `activate_model_version`: activa una version y desactiva el resto, con registro en audit_log.
-- `calculate_model_metrics`: calcula precision/recall/f1 desde `predictions_history`.
+- `activate_model_version`: activa una version y desactiva el resto.
 - `check_fraud_rate`: evalua tasa de fraude y emite alertas.
-- `audit_trigger`: genera eventos de auditoria para INSERT/UPDATE/DELETE.
 
 Finalmente, en `database/postgresql/triggers/001_initial_triggers.sql` se registraron triggers para:
 
 - Alertar sobre tasas de fraude altas en `predictions_history`.
-- Auditar cambios en `model_deployments` y `predictions_history`.
 
 ### 2.3 Seeds y soporte de datos
 

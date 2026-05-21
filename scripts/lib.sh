@@ -91,7 +91,7 @@ check_mlflow() {
 }
 
 check_fastapi() {
-  curl -fsS http://localhost:8000/health >/dev/null 2>&1
+  curl -s http://localhost:8000/health 2>/dev/null | grep -q '"status"'
 }
 
 check_airflow_webserver() {

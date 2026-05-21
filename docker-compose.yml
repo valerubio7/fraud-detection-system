@@ -1,4 +1,7 @@
 services:
+  # ──────────────────────────────────────────────
+  # Coordination & In-Memory Cache
+  # ──────────────────────────────────────────────
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     restart: unless-stopped
@@ -14,6 +17,65 @@ services:
     networks:
       - mlops-net
 
+  redis:
+    image: redis:7.2-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - mlops-net
+
+  # ──────────────────────────────────────────────
+  # Databases
+  # ──────────────────────────────────────────────
+  postgresql:
+    image: postgres:16.2
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - mlops-net
+
+  timescaledb:
+    image: timescale/timescaledb:2.14.2-pg16
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ${TIMESCALE_USER}
+      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD}
+      POSTGRES_DB: ${TIMESCALE_DB}
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TIMESCALE_USER} -d ${TIMESCALE_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - mlops-net
+
+  # ──────────────────────────────────────────────
+  # Kafka Ecosystem
+  # ──────────────────────────────────────────────
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     restart: unless-stopped
@@ -76,310 +138,9 @@ services:
     networks:
       - mlops-net
 
-  redis:
-    image: redis:7.2-alpine
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    networks:
-      - mlops-net
-
-  timescaledb:
-    image: timescale/timescaledb:2.14.2-pg16
-    restart: unless-stopped
-    ports:
-      - "5433:5432"
-    environment:
-      POSTGRES_USER: ${TIMESCALE_USER}
-      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD}
-      POSTGRES_DB: ${TIMESCALE_DB}
-    volumes:
-      - timescale-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${TIMESCALE_USER} -d ${TIMESCALE_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
-    networks:
-      - mlops-net
-
-  postgresql:
-    image: postgres:16.2
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
-    networks:
-      - mlops-net
-
-  mlflow:
-    build:
-      context: .
-      dockerfile: docker/mlflow/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      postgresql:
-        condition: service_healthy
-    ports:
-      - "5000:5000"
-    environment:
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
-      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
-    command:
-      - mlflow
-      - server
-      - --backend-store-uri
-      - ${MLFLOW_BACKEND_STORE_URI}
-      - --default-artifact-root
-      - mlflow-artifacts:/
-      - --artifacts-destination
-      - /mlflow/artifacts
-      - --serve-artifacts
-      - --host
-      - 0.0.0.0
-      - --port
-      - "5000"
-    volumes:
-      - mlflow-data:/mlflow/artifacts
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:5000\", timeout=3)' || exit 1",
-        ]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-    networks:
-      - mlops-net
-
-  airflow-init:
-    build:
-      context: .
-      dockerfile: docker/airflow/Dockerfile
-    restart: "no"
-    depends_on:
-      postgresql:
-        condition: service_healthy
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
-      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY}
-      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY}
-      AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER}
-      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
-      PYTHONPATH: /opt/airflow/project
-      POSTGRES_HOST: postgresql
-      POSTGRES_PORT: "5432"
-      TIMESCALE_HOST: timescaledb
-      TIMESCALE_PORT: "5432"
-      TIMESCALE_USER: ${TIMESCALE_USER}
-      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD}
-      TIMESCALE_DB: ${TIMESCALE_DB}
-      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
-      MODEL_NAME: FraudDetectionModel
-      FRAUD_SCORE_THRESHOLD: "0.5"
-    volumes:
-      - ./mlops/airflow/dags:/opt/airflow/dags
-      - ./mlops/airflow/plugins:/opt/airflow/plugins
-      - .:/opt/airflow/project:ro
-    command:
-      - bash
-      - -c
-      - |
-        python - <<'EOF'
-        import os, psycopg2
-        conn = psycopg2.connect(
-            host="postgresql",
-            user=os.environ["POSTGRES_USER"],
-            password=os.environ["POSTGRES_PASSWORD"],
-            dbname=os.environ["POSTGRES_DB"],
-        )
-        conn.autocommit = True
-        cur = conn.cursor()
-        cur.execute("SELECT 1 FROM pg_database WHERE datname='airflow_metadata'")
-        if not cur.fetchone():
-            cur.execute("CREATE DATABASE airflow_metadata")
-        conn.close()
-        EOF
-        airflow db migrate &&
-        airflow users create \
-          --username "$AIRFLOW_ADMIN_USER" \
-          --password "$AIRFLOW_ADMIN_PASSWORD" \
-          --firstname Admin --lastname User \
-          --role Admin \
-          --email admin@fraudmlops.local 2>/dev/null || true
-    networks:
-      - mlops-net
-
-  airflow-webserver:
-    build:
-      context: .
-      dockerfile: docker/airflow/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      postgresql:
-        condition: service_healthy
-    ports:
-      - "8081:8080"
-    environment:
-      AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
-      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY}
-      AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER}
-      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
-      PYTHONPATH: /opt/airflow/project
-      POSTGRES_HOST: postgresql
-      POSTGRES_PORT: "5432"
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      TIMESCALE_HOST: timescaledb
-      TIMESCALE_PORT: "5432"
-      TIMESCALE_USER: ${TIMESCALE_USER}
-      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD}
-      TIMESCALE_DB: ${TIMESCALE_DB}
-      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
-      MODEL_NAME: FraudDetectionModel
-      FRAUD_SCORE_THRESHOLD: "0.5"
-      AIRFLOW_CONN_TIMESCALEDB_DEFAULT: "postgresql+psycopg2://${TIMESCALE_USER}:${TIMESCALE_PASSWORD}@timescaledb:5432/${TIMESCALE_DB}"
-      AIRFLOW_CONN_POSTGRES_DEFAULT: "postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/${POSTGRES_DB}"
-      AIRFLOW_CONN_MLFLOW_DEFAULT: "http://mlflow:5000"
-    command: ["airflow", "webserver"]
-    volumes:
-      - ./mlops/airflow/dags:/opt/airflow/dags
-      - ./mlops/airflow/plugins:/opt/airflow/plugins
-      - airflow-logs:/opt/airflow/logs
-      - .:/opt/airflow/project:ro
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8080/health\", timeout=3)' || exit 1",
-        ]
-      interval: 20s
-      timeout: 5s
-      retries: 10
-      start_period: 40s
-    networks:
-      - mlops-net
-
-  airflow-scheduler:
-    build:
-      context: .
-      dockerfile: docker/airflow/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      postgresql:
-        condition: service_healthy
-    environment:
-      AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
-      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY}
-      AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER}
-      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
-      PYTHONPATH: /opt/airflow/project
-      POSTGRES_HOST: postgresql
-      POSTGRES_PORT: "5432"
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      TIMESCALE_HOST: timescaledb
-      TIMESCALE_PORT: "5432"
-      TIMESCALE_USER: ${TIMESCALE_USER}
-      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD}
-      TIMESCALE_DB: ${TIMESCALE_DB}
-      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
-      MODEL_NAME: FraudDetectionModel
-      FRAUD_SCORE_THRESHOLD: "0.5"
-      AIRFLOW_CONN_TIMESCALEDB_DEFAULT: "postgresql+psycopg2://${TIMESCALE_USER}:${TIMESCALE_PASSWORD}@timescaledb:5432/${TIMESCALE_DB}"
-      AIRFLOW_CONN_POSTGRES_DEFAULT: "postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/${POSTGRES_DB}"
-      AIRFLOW_CONN_MLFLOW_DEFAULT: "http://mlflow:5000"
-      DRIFT_THRESHOLD_CRITICAL: "0.20"
-      DRIFT_THRESHOLD_GLOBAL: "0.30"
-      MODEL_F1_DEGRADATION_THRESHOLD: "0.05"
-      AIRFLOW_API_URL: "http://airflow-webserver:8080"
-      # MIN_TRANSACTIONS_PER_HOUR: "10"   # data_quality_check: umbral mínimo de transacciones/hora
-      # MIN_PREDICTIONS_PER_HOUR: "5"     # data_quality_check: umbral mínimo de predicciones/hora
-    command: ["airflow", "scheduler"]
-    volumes:
-      - ./mlops/airflow/dags:/opt/airflow/dags
-      - ./mlops/airflow/plugins:/opt/airflow/plugins
-      - airflow-logs:/opt/airflow/logs
-      - .:/opt/airflow/project:ro
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\" || exit 1",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-      start_period: 60s
-    networks:
-      - mlops-net
-
-  fastapi:
-    build:
-      context: .
-      dockerfile: docker/fastapi/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      postgresql:
-        condition: service_healthy
-      timescaledb:
-        condition: service_healthy
-      mlflow:
-        condition: service_healthy
-    ports:
-      - "8000:8000"
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      TIMESCALE_USER: ${TIMESCALE_USER}
-      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD}
-      TIMESCALE_DB: ${TIMESCALE_DB}
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
-      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
-      KAFKA_BROKER_URL: ${KAFKA_BROKER_URL}
-      FASTAPI_WORKERS: 2
-      PG_POOL_MIN_SIZE: 2
-      PG_POOL_MAX_SIZE: 10
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health | grep -q 'ok' || exit 1"]
-      interval: 30s
-      timeout: 5s
-      start_period: 30s
-      retries: 3
-    networks:
-      - mlops-net
-
+  # ──────────────────────────────────────────────
+  # Producers & Consumers
+  # ──────────────────────────────────────────────
   producer:
     build:
       context: .
@@ -449,6 +210,280 @@ services:
     networks:
       - mlops-net
 
+  # ──────────────────────────────────────────────
+  # API & ML Engine
+  # ──────────────────────────────────────────────
+  mlflow:
+    build:
+      context: .
+      dockerfile: docker/mlflow/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    ports:
+      - "5000:5000"
+    environment:
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
+    command:
+      - mlflow
+      - server
+      - --backend-store-uri
+      - ${MLFLOW_BACKEND_STORE_URI}
+      - --default-artifact-root
+      - mlflow-artifacts:/
+      - --artifacts-destination
+      - /mlflow/artifacts
+      - --serve-artifacts
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+    volumes:
+      - mlflow-data:/mlflow/artifacts
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c ''import urllib.request; urllib.request.urlopen("http://127.0.0.1:5000", timeout=3)'' || exit 1',
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - mlops-net
+
+  fastapi:
+    build:
+      context: .
+      dockerfile: docker/fastapi/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TIMESCALE_USER: ${TIMESCALE_USER}
+      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD}
+      TIMESCALE_DB: ${TIMESCALE_DB}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
+      KAFKA_BROKER_URL: ${KAFKA_BROKER_URL}
+      FASTAPI_WORKERS: 2
+      PG_POOL_MIN_SIZE: 2
+      PG_POOL_MAX_SIZE: 10
+    healthcheck:
+      test:
+        ["CMD", "python3", "-c", "import socket; s=socket.create_connection(('localhost',8000),timeout=3); s.close()"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    networks:
+      - mlops-net
+
+  # ──────────────────────────────────────────────
+  # Airflow
+  # ──────────────────────────────────────────────
+  airflow-init:
+    build:
+      context: .
+      dockerfile: docker/airflow/Dockerfile
+    image: fraud-detection-system-airflow:latest
+    restart: "no"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY}
+      AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+      PYTHONPATH: /opt/airflow/project
+      POSTGRES_HOST: postgresql
+      POSTGRES_PORT: "5432"
+      TIMESCALE_HOST: timescaledb
+      TIMESCALE_PORT: "5432"
+      TIMESCALE_USER: ${TIMESCALE_USER}
+      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD}
+      TIMESCALE_DB: ${TIMESCALE_DB}
+      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      MODEL_NAME: FraudDetectionModel
+      FRAUD_SCORE_THRESHOLD: "0.5"
+    volumes:
+      - ./mlops/airflow/dags:/opt/airflow/dags
+      - ./mlops/airflow/plugins:/opt/airflow/plugins
+      - .:/opt/airflow/project:ro
+    command:
+      - bash
+      - -c
+      - |
+        python - <<'EOF'
+        import os, psycopg2
+        conn = psycopg2.connect(
+            host="postgresql",
+            user=os.environ["POSTGRES_USER"],
+            password=os.environ["POSTGRES_PASSWORD"],
+            dbname=os.environ["POSTGRES_DB"],
+        )
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM pg_database WHERE datname='airflow_metadata'")
+        if not cur.fetchone():
+            cur.execute("CREATE DATABASE airflow_metadata")
+        conn.close()
+        EOF
+        airflow db migrate &&
+        airflow users create \
+          --username "$AIRFLOW_ADMIN_USER" \
+          --password "$AIRFLOW_ADMIN_PASSWORD" \
+          --firstname Admin --lastname User \
+          --role Admin \
+          --email admin@fraudmlops.local 2>/dev/null || true
+    networks:
+      - mlops-net
+
+  airflow-webserver:
+    image: fraud-detection-system-airflow:latest
+    restart: unless-stopped
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    environment:
+      AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY}
+      AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      PYTHONPATH: /opt/airflow/project
+      POSTGRES_HOST: postgresql
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TIMESCALE_HOST: timescaledb
+      TIMESCALE_PORT: "5432"
+      TIMESCALE_USER: ${TIMESCALE_USER}
+      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD}
+      TIMESCALE_DB: ${TIMESCALE_DB}
+      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
+      MODEL_NAME: FraudDetectionModel
+      FRAUD_SCORE_THRESHOLD: "0.5"
+      AIRFLOW_CONN_TIMESCALEDB_DEFAULT: "postgresql+psycopg2://${TIMESCALE_USER}:${TIMESCALE_PASSWORD}@timescaledb:5432/${TIMESCALE_DB}"
+      AIRFLOW_CONN_POSTGRES_DEFAULT: "postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/${POSTGRES_DB}"
+      AIRFLOW_CONN_MLFLOW_DEFAULT: "http://mlflow:5000"
+    command: ["airflow", "webserver"]
+    volumes:
+      - ./mlops/airflow/dags:/opt/airflow/dags
+      - ./mlops/airflow/plugins:/opt/airflow/plugins
+      - airflow-logs:/opt/airflow/logs
+      - .:/opt/airflow/project:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c ''import urllib.request; urllib.request.urlopen("http://127.0.0.1:8080/health", timeout=3)'' || exit 1',
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - mlops-net
+
+  airflow-scheduler:
+    image: fraud-detection-system-airflow:latest
+    restart: unless-stopped
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: ${AIRFLOW__CORE__EXECUTOR}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY}
+      AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      PYTHONPATH: /opt/airflow/project
+      POSTGRES_HOST: postgresql
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TIMESCALE_HOST: timescaledb
+      TIMESCALE_PORT: "5432"
+      TIMESCALE_USER: ${TIMESCALE_USER}
+      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD}
+      TIMESCALE_DB: ${TIMESCALE_DB}
+      MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
+      MODEL_NAME: FraudDetectionModel
+      FRAUD_SCORE_THRESHOLD: "0.5"
+      AIRFLOW_CONN_TIMESCALEDB_DEFAULT: "postgresql+psycopg2://${TIMESCALE_USER}:${TIMESCALE_PASSWORD}@timescaledb:5432/${TIMESCALE_DB}"
+      AIRFLOW_CONN_POSTGRES_DEFAULT: "postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/${POSTGRES_DB}"
+      AIRFLOW_CONN_MLFLOW_DEFAULT: "http://mlflow:5000"
+      DRIFT_THRESHOLD_CRITICAL: "0.20"
+      DRIFT_THRESHOLD_GLOBAL: "0.30"
+      MODEL_F1_DEGRADATION_THRESHOLD: "0.05"
+      AIRFLOW_API_URL: "http://airflow-webserver:8080"
+    command: ["airflow", "scheduler"]
+    volumes:
+      - ./mlops/airflow/dags:/opt/airflow/dags
+      - ./mlops/airflow/plugins:/opt/airflow/plugins
+      - airflow-logs:/opt/airflow/logs
+      - .:/opt/airflow/project:ro
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}" || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - mlops-net
+
+  # ──────────────────────────────────────────────
+  # Monitoring
+  # ──────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    networks:
+      - mlops-net
+
   grafana:
     build:
       context: .
@@ -481,28 +516,6 @@ services:
       interval: 30s
       timeout: 5s
       start_period: 20s
-      retries: 3
-    networks:
-      - mlops-net
-
-  prometheus:
-    image: prom/prometheus:v2.51.0
-    restart: unless-stopped
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=15d"
-      - "--web.enable-lifecycle"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:9090/-/healthy || exit 1"]
-      interval: 30s
-      timeout: 5s
-      start_period: 15s
       retries: 3
     networks:
       - mlops-net

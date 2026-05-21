@@ -4,7 +4,7 @@
 
 | Volumen Docker | Contenido | Criticidad |
 |---|---|---|
-| `postgres-data` | model_deployments, predictions_history, drift_reports, alert_log, audit_log, airflow_metadata | Alta |
+| `postgres-data` | model_deployments, predictions_history, drift_reports, alert_log, airflow_metadata | Alta |
 | `timescale-data` | transactions (hypertable), fraud_volume_hourly (cagg) | Alta |
 | `mlflow-data` | artefactos de modelos (joblib, encoders, plots) | Media |
 | `grafana-data` | estado interno de Grafana (dashboards no provisionados) | Baja (provisionados automáticamente) |
