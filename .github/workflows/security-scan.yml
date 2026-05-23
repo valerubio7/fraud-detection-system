@@ -13,6 +13,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.4"
+
       - name: Run ruff security rules (bandit equivalent)
         run: |
           uvx ruff check \
