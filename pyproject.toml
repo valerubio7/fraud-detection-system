@@ -119,6 +119,20 @@ select = [
   "UP",
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# /tmp paths are intentional in containerized environments
+"mlops/airflow/dags/*.py" = ["S108", "S603", "S607"]
+"mlops/evidently/*.py" = ["S108"]
+"mlops/mlflow/init_mlflow.py" = ["S310"]
+"serving/app/services/model_loader.py" = ["S108"]
+# random.Random is used for data simulation, not cryptography
+"streaming/producer/*.py" = ["S311"]
+"database/timescaledb/seeds/seed_transactions.py" = ["S311"]
+# parameterized query via pd.read_sql(..., params=), not a real injection risk
+"model/pipeline/evaluate.py" = ["S608"]
+# git call with trusted static args
+"model/pipeline/train.py" = ["S607"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
