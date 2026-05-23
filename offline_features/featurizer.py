@@ -1,11 +1,3 @@
-"""
-Offline batch featurizer for fraud detection model training.
-
-Replicates the features produced by the online pipeline
-(streaming/features/sliding_window_store.py and streaming/features/historical_profile_store.py)
-in a batch, point-in-time correct manner.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -14,10 +6,10 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from feature_engineering.offline.encoders import CategoricalEncoderPipeline
+from offline_features.encoders import CategoricalEncoderPipeline
 
 if TYPE_CHECKING:
-    from feature_engineering.offline.feature_selection import FeatureSelectionReport
+    from offline_features.feature_selection import FeatureSelectionReport
 
 _ONE_HOUR_NS = np.int64(3_600 * 1_000_000_000)
 _TWENTY_FOUR_HOURS_NS = np.int64(86_400 * 1_000_000_000)
@@ -68,20 +60,6 @@ _REQUIRED_COLUMNS: frozenset[str] = frozenset(
 
 
 def _window_features_for_user(times_ns: np.ndarray, amounts: np.ndarray) -> tuple[np.ndarray, ...]:
-    """Sliding-window features for one user's sorted transactions.
-
-    For transaction i, only transactions with timestamp strictly less than
-    times_ns[i] are counted — no data leakage. Uses binary search and prefix
-    sums for O(n log n) total complexity.
-
-    Args:
-        times_ns: int64 nanosecond timestamps, sorted ascending.
-        amounts: float64 transaction amounts aligned with times_ns.
-
-    Returns:
-        Tuple of arrays (tx_count_1h, tx_count_24h, tx_count_7d,
-        amount_sum_1h, amount_sum_24h, tx_velocity_1h, seconds_since_last_tx).
-    """
     n = len(times_ns)
     tx_count_1h = np.zeros(n, dtype=np.int64)
     tx_count_24h = np.zeros(n, dtype=np.int64)
@@ -138,22 +116,6 @@ def _historical_features_for_user(
     countries: np.ndarray,
     merchants: np.ndarray,
 ) -> tuple[np.ndarray, ...]:
-    """Historical profile features for one user's sorted transactions.
-
-    Maintains a running state that advances monotonically, achieving O(n)
-    amortised complexity. Only transactions with timestamp strictly less than
-    the current row are included in each row's computation.
-
-    Args:
-        times_ns: int64 nanosecond timestamps, sorted ascending.
-        amounts: float64 amounts aligned with times_ns.
-        countries: str country codes aligned with times_ns.
-        merchants: str merchant IDs aligned with times_ns.
-
-    Returns:
-        Tuple of arrays (amount_ratio_vs_user_avg, is_country_new,
-        distinct_countries_seen, is_merchant_new, distinct_merchants_seen).
-    """
     n = len(times_ns)
     amount_ratio = np.ones(n, dtype=np.float64)
     is_country_new = np.zeros(n, dtype=np.float64)
@@ -192,36 +154,11 @@ def _historical_features_for_user(
         is_merchant_new[i] = 1.0 if m_i not in seen_merchants else 0.0
         distinct_merchants[i] = len(seen_merchants)
 
-    return (
-        amount_ratio,
-        is_country_new,
-        distinct_countries,
-        is_merchant_new,
-        distinct_merchants,
-    )
+    return (amount_ratio, is_country_new, distinct_countries, is_merchant_new, distinct_merchants)
 
 
 class TransactionFeaturizer:
-    """Offline batch featurizer for fraud detection, consistent with the online pipeline.
-
-    Produces the same 18 features as the consumer service
-    (SlidingWindowStore + HistoricalProfileStore) in a batch, point-in-time correct
-    fashion so training data has no temporal leakage.
-
-    Example::
-
-        featurizer = TransactionFeaturizer(encoders_dir="artifacts/encoders")
-        X_train = featurizer.fit_transform(df_train, y_train)
-        X_test = featurizer.transform(df_test)
-    """
-
     def __init__(self, encoders_dir: str | Path | None = None) -> None:
-        """Initialize the featurizer.
-
-        Args:
-            encoders_dir: Optional directory where fitted encoders are saved on
-                ``fit()`` and loaded automatically on ``__init__`` if the file exists.
-        """
         self._encoders_dir = Path(encoders_dir) if encoders_dir is not None else None
         self._cat_pipeline: CategoricalEncoderPipeline | None = None
         self._is_fitted = False
@@ -234,16 +171,6 @@ class TransactionFeaturizer:
                 self._is_fitted = True
 
     def fit(self, df: pd.DataFrame, y: pd.Series) -> TransactionFeaturizer:
-        """Fit categorical encoders on training data.
-
-        Args:
-            df: Training DataFrame with at least the columns defined in
-                ``_REQUIRED_COLUMNS``.
-            y: Binary target series aligned with df (the ``is_fraud`` column).
-
-        Returns:
-            self, for method chaining.
-        """
         self._validate_columns(df)
         self._cat_pipeline = CategoricalEncoderPipeline()
         self._cat_pipeline.fit(df, y)
@@ -256,22 +183,6 @@ class TransactionFeaturizer:
         return self
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Compute all features for every row in df.
-
-        Window and historical features are point-in-time correct: each row
-        only uses transactions with a strictly earlier timestamp for the same user.
-
-        Args:
-            df: DataFrame with at least the columns defined in ``_REQUIRED_COLUMNS``.
-                The index must have no duplicate values.
-
-        Returns:
-            DataFrame whose columns match ``get_feature_names()``, with the same
-            index and row order as ``df``.
-
-        Raises:
-            RuntimeError: If called before ``fit()`` or loading a pre-fitted encoder.
-        """
         if not self._is_fitted or self._cat_pipeline is None:
             raise RuntimeError("Call fit() before transform().")
         self._validate_columns(df)
@@ -378,25 +289,11 @@ class TransactionFeaturizer:
         return self.fit(df, y).transform(df)
 
     def get_feature_names(self) -> list[str]:
-        """Return the ordered list of output feature column names.
-
-        Returns:
-            Selected feature names if ``apply_selection`` has been called, otherwise
-            the full list of 18 features.
-        """
         if self.selected_features_ is not None:
             return list(self.selected_features_)
         return list(ALL_FEATURES)
 
     def apply_selection(self, report: FeatureSelectionReport) -> None:
-        """Persist selected features from a FeatureSelectionReport.
-
-        After calling this, ``transform()`` will return only the selected columns
-        and ``get_feature_names()`` will reflect the reduced feature list.
-
-        Args:
-            report: FeatureSelectionReport returned by ``select_features()``.
-        """
         self.selected_features_ = list(report.selected_features)
 
     def _validate_columns(self, df: pd.DataFrame) -> None:

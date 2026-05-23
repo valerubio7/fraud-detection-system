@@ -121,7 +121,7 @@ def seed_timescaledb(conn_params: dict, df: pd.DataFrame) -> None:
 
 def _make_selection_report(X_full: pd.DataFrame, selected_features: list[str]):
     """Build a FeatureSelectionReport that selects exactly the given features."""
-    from feature_engineering.offline.feature_selection import FeatureSelectionReport
+    from offline_features.feature_selection import FeatureSelectionReport
 
     all_features = X_full.columns.tolist()
     dropped = [f for f in all_features if f not in selected_features]
@@ -238,9 +238,9 @@ class TestTrainingPipelineIntegration:
 
     def test_full_training_registers_model_in_mlflow(self):
         """El pipeline completo registra el modelo en MLflow."""
-        from feature_engineering.offline.class_imbalance import compute_scale_pos_weight
         from model.selected_features import SELECTED_FEATURES
         from model.train import build_features, load_transactions, temporal_split, train_model
+        from offline_features.imbalance_strategies import compute_scale_pos_weight
 
         df = load_transactions(limit=1000)
         y = df["is_fraud"].astype(int)

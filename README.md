@@ -109,8 +109,7 @@ fraud-detection-system/
 │   ├── features/          # Feature engineering online + writer TimescaleDB
 │   ├── inference/         # Consumer features → FastAPI → predictions
 │   └── schemas/           # Schemas Avro para los topics Kafka
-├── feature_engineering/
-│   └── offline/           # Pipeline batch para entrenamiento (featurizer, encoders)
+├── offline_features/      # Pipeline batch para entrenamiento (featurizer, encoders)
 ├── model/
 │   ├── train.py           # Pipeline de entrenamiento XGBoost
 │   ├── evaluate.py        # Quality gates y métricas

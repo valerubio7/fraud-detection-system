@@ -25,9 +25,6 @@ from xgboost import XGBClassifier
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from feature_engineering.offline.class_imbalance import compute_scale_pos_weight
-from feature_engineering.offline.feature_selection import select_features
-from feature_engineering.offline.featurizer import TransactionFeaturizer
 from model.metrics import evaluate_model, find_optimal_threshold
 from model.plots import (
     save_confusion_matrix_plot,
@@ -38,6 +35,9 @@ from model.plots import (
 )
 from model.selected_features import SELECTED_FEATURES
 from model.tuning import run_optuna_study
+from offline_features.feature_selection import select_features
+from offline_features.featurizer import TransactionFeaturizer
+from offline_features.imbalance_strategies import compute_scale_pos_weight
 
 logger = logging.getLogger(__name__)
 

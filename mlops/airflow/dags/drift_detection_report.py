@@ -109,7 +109,7 @@ def drift_detection_report() -> None:
     def featurize_production(active: dict, raw_path: str) -> str:
         import pandas as pd
 
-        from feature_engineering.offline.featurizer import TransactionFeaturizer
+        from offline_features.featurizer import TransactionFeaturizer
 
         encoder_dir = _download_encoder(active["mlflow_run_id"])
         featurizer = TransactionFeaturizer(encoders_dir=encoder_dir)

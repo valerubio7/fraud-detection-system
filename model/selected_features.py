@@ -2,7 +2,7 @@
 Definitive feature list for the FraudDetectionModel.
 
 SELECTED_FEATURES is populated by running select_features() from
-feature_engineering/offline/selection.py on the seed dataset (50 000 transactions,
+offline_features/feature_selection.py on the seed dataset (50 000 transactions,
 seed=42, ~2 % fraud rate).
 
 Derivation notes (from eda_findings.md + correlation analysis):
@@ -17,7 +17,7 @@ Derivation notes (from eda_findings.md + correlation analysis):
 - Boruta is not run by default (use_boruta=False); the list below assumes that setting.
 
 To regenerate this list against a fresh dataset, run:
-    python feature_engineering/offline/selection.py
+    python offline_features/feature_selection.py
 and copy report.selected_features into SELECTED_FEATURES below.
 """
 

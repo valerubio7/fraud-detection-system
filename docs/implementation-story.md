@@ -221,22 +221,22 @@ Los hallazgos quedaron documentados en `docs/eda_findings.md`. El mas relevante 
 
 El objetivo central de esta seccion fue replicar con exactitud el pipeline online (Fase 3) pero en modo batch, sin filtrar data del futuro.
 
-**TransactionFeaturizer** (`feature_engineering/offline/featurizer.py`) implementa las mismas 18 features del pipeline de streaming usando:
+**TransactionFeaturizer** (`offline_features/featurizer.py`) implementa las mismas 18 features del pipeline de streaming usando:
 
 - Binary search y prefix sums para ventanas temporales (1h, 24h, 7d), con complejidad O(n log n) total por usuario.
 - Estado incremental O(n) para las features de perfil historico (ratio de monto, paises y merchants nuevos).
 - La invariante clave: para la transaccion i solo se usan transacciones con timestamp estrictamente menor, lo que elimina data leakage.
 
-**Encoders** (`feature_engineering/offline/encoders.py`) implementa `CategoricalEncoderPipeline` con dos estrategias:
+**Encoders** (`offline_features/encoders.py`) implementa `CategoricalEncoderPipeline` con dos estrategias:
 
 - `TargetEncoder` con suavizado (smoothed mean target encoding) para `merchant_category` y `country`. Requiere la variable objetivo en fit para calcular las medias por categoria.
 - `OrdinalEncoder` para `device_type`.
 
 Los encoders se persisten como artefactos para garantizar que el serving use exactamente los mismos valores.
 
-**Manejo de desbalance** (`feature_engineering/offline/imbalance.py`) evalua dos estrategias: SMOTE (oversampling de la clase fraude) y `scale_pos_weight` de XGBoost. Incluye `ImbalanceReport` con metricas comparativas por estrategia. En la practica se opto por `scale_pos_weight` calculado como `(n_negatives / n_positives)` sobre el set de entrenamiento.
+**Manejo de desbalance** (`offline_features/imbalance_strategies.py`) evalua dos estrategias: SMOTE (oversampling de la clase fraude) y `scale_pos_weight` de XGBoost. Incluye `ImbalanceReport` con metricas comparativas por estrategia. En la practica se opto por `scale_pos_weight` calculado como `(n_negatives / n_positives)` sobre el set de entrenamiento.
 
-**Seleccion de features** (`feature_engineering/offline/selection.py`) combina tres metodos:
+**Seleccion de features** (`offline_features/feature_selection.py`) combina tres metodos:
 
 - Importancia XGBoost basada en gain para descartar features de bajo impacto (umbral: < 1% del gain total).
 - Correlacion de Pearson para detectar pares redundantes (umbral: |r| > 0.85). Elimina la feature con menor gain del par.
@@ -357,7 +357,7 @@ Se realizaron varios fixes para estabilizar el serving:
 - El healthcheck del contenedor Docker se simplificó a TCP connect en puerto 8000 para evitar dependencia del modelo.
 - El directorio `/tmp` se crea explícitamente antes de arrancar para que el proceso no-root pueda escribir artifacts.
 - `config.py` se agregó al COPY del Dockerfile de FastAPI para resolver imports.
-- El `feature_engineering/` completo se incluyó en la imagen de serving para que los encoders puedan aplicarse correctamente.
+- El directorio `offline_features/` se incluyó en la imagen de serving para que los encoders puedan aplicarse correctamente.
 - Se parametrizaron `min_size` y `max_size` del pool asyncpg, y `workers` de uvicorn, vía variables de entorno.
 
 ### 5.7 Dependencias y documentación

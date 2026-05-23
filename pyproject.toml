@@ -84,7 +84,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["serving", "streaming", "model", "feature_engineering", "mlops"]
+source = ["serving", "streaming", "model", "offline_features", "mlops"]
 omit = ["*/tests/*", "*/migrations/*", "*/__pycache__/*"]
 
 [tool.coverage.report]

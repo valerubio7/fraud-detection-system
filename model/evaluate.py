@@ -17,8 +17,8 @@ from sklearn.metrics import f1_score, roc_auc_score
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from feature_engineering.offline.featurizer import TransactionFeaturizer  # noqa: E402
 from model.selected_features import SELECTED_FEATURES  # noqa: E402
+from offline_features.featurizer import TransactionFeaturizer  # noqa: E402
 
 MIN_F1 = 0.85
 MIN_AUC_ROC = 0.90
@@ -63,9 +63,7 @@ def load_champion_model(model_name: str) -> object | None:
     try:
         return _load_model_from_uri(f"models:/{model_name}/Production")
     except Exception as exc:
-        raise RuntimeError(
-            f"Champion model exists in Production stage but failed to load: {exc}"
-        ) from exc
+        raise RuntimeError(f"Champion model exists in Production stage but failed to load: {exc}") from exc
 
 
 def compute_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -118,9 +116,7 @@ def run_quality_gates(model_name: str, model_version: str) -> GateResult:
     return result
 
 
-def compare_challenger_vs_champion(
-    challenger_name: str, challenger_version: str
-) -> ChampionComparisonResult:
+def compare_challenger_vs_champion(challenger_name: str, challenger_version: str) -> ChampionComparisonResult:
     """Compare a challenger model against the Production champion on the test set."""
     print("Loading champion model from Production stage...")
     champion = load_champion_model(challenger_name)
@@ -290,10 +286,7 @@ def _print_comparison_summary(result: ChampionComparisonResult) -> None:
         f"  {'F1-score (fraud)':<22} {result.challenger_f1:>10.4f} "
         f"{result.champion_f1:>10.4f} {result.f1_difference:>+10.4f}"
     )
-    print(
-        f"  {'AUC-ROC':<22} {result.challenger_auc_roc:>10.4f} "
-        f"{result.champion_auc_roc:>10.4f} {'':>10}"
-    )
+    print(f"  {'AUC-ROC':<22} {result.challenger_auc_roc:>10.4f} {result.champion_auc_roc:>10.4f} {'':>10}")
     print("-" * 50)
     print(f"  {'Verdict:':<22} {'WIN' if result.challenger_wins else 'LOSE'}")
     print(f"  Reason: {result.reason}")
@@ -301,9 +294,7 @@ def _print_comparison_summary(result: ChampionComparisonResult) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Evaluate quality gates and compare challenger vs champion."
-    )
+    parser = argparse.ArgumentParser(description="Evaluate quality gates and compare challenger vs champion.")
     parser.add_argument("--model-name", required=True, help="MLflow Model Registry name.")
     parser.add_argument("--model-version", required=True, help="Model version number.")
     parser.add_argument(
