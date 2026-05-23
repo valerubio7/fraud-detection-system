@@ -71,11 +71,22 @@ Estructura interna:
 | `main.py` | Orquesta el loop principal: consume, hidrata estado si es usuario nuevo, computa features, persiste en Redis y TimescaleDB, publica en Kafka. Maneja señales `SIGINT`/`SIGTERM` para shutdown limpio. |
 
 ### `inference/`
-Consume del topic `transactions.features`, llama a la API FastAPI de inferencia, publica resultados en `transactions.predictions` y alertas de fraude en `fraud.alerts`. Incluye circuit breaker para proteger la API. Servicio long-running:
+Consume del topic `transactions.features`, llama a la API de serving para obtener la predicción, publica resultados en `transactions.predictions` y alertas en `transactions.fraud.alerts`. Protege la API con un circuit breaker. Servicio long-running:
 
 ```bash
 docker compose up -d inference
 ```
+
+Estructura interna:
+
+| Archivo | Responsabilidad |
+|---|---|
+| `feature_consumer.py` | `FeatureConsumer` — consumer Kafka con deserialización Avro, commit manual y retry queue de un intento antes de dead-letter. Análogo a `TransactionConsumer` pero lee del topic `transactions.features`. |
+| `api_client.py` | `InferenceApiClient` — cliente HTTP (`httpx`) que llama a `GET /model/info` al arrancar para obtener el `deployment_id` activo, y a `POST /predict` por cada mensaje consumido. Timeout de 2 s por defecto. |
+| `circuit_breaker.py` | `CircuitBreaker` — implementa el patrón CLOSED → OPEN → HALF_OPEN. Se abre tras N fallos consecutivos contra la API y espera un cooldown configurable antes de intentar de nuevo. |
+| `prediction_publisher.py` | `PredictionPublisher` — extiende `AvroPublisher` y serializa el resultado de la predicción (`score`, `label`, `model_version_id`, `latency_ms`) en el schema `transaction_prediction.avsc`. |
+| `alert_publisher.py` | `AlertPublisher` — extiende `AvroPublisher` y publica una alerta de fraude en `transactions.fraud.alerts` cuando `prediction_label` es `True`. Clasifica la severidad en `WARNING` (score < 0.75), `HIGH` (≥ 0.75) o `CRITICAL` (≥ 0.90). |
+| `main.py` | Orquesta el loop principal: consume un mensaje, verifica el circuit breaker, llama a la API, publica predicción, publica alerta si hay fraude, hace commit del offset. Maneja señales `SIGINT`/`SIGTERM` para shutdown limpio. |
 
 ## Schemas (Avro)
 
