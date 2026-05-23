@@ -18,6 +18,7 @@ class ModelLoader:
         self._mc_global: float = 0.0
         self._country_map: dict[str, float] = {}
         self._country_global: float = 0.0
+        self._device_type_map: dict[str, int] = {}
         self.model_name: str | None = None
         self.model_version: str | None = None
         self.model_stage: str | None = None
@@ -46,6 +47,7 @@ class ModelLoader:
         self._mc_global = self._encoder._merchant_category_enc.global_mean_
         self._country_map = self._encoder._country_enc.mapping_
         self._country_global = self._encoder._country_enc.global_mean_
+        self._device_type_map = self._encoder._device_type_enc.mapping_
 
         conn = psycopg2.connect(
             host=os.getenv("POSTGRES_HOST", "postgresql"),
@@ -73,6 +75,7 @@ class ModelLoader:
     def prepare_features(self, raw: dict, window_features: dict[str, float]) -> np.ndarray:
         mc_encoded = self._mc_map.get(str(raw["merchant_category"]), self._mc_global)
         country_encoded = self._country_map.get(str(raw["country"]), self._country_global)
+        device_type_encoded = self._device_type_map.get(str(raw["device_type"]), -1)
 
         return np.array(
             [
@@ -82,6 +85,7 @@ class ModelLoader:
                     raw["timestamp"].weekday(),
                     mc_encoded,
                     country_encoded,
+                    device_type_encoded,
                     window_features["tx_count_1h"],
                     window_features["tx_count_24h"],
                     window_features["tx_count_7d"],
