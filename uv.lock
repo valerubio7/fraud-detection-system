@@ -1825,10 +1825,14 @@ source = { virtual = "." }
 
 [package.dev-dependencies]
 airflow = [
+    { name = "boruta" },
     { name = "evidently" },
+    { name = "imbalanced-learn" },
     { name = "joblib" },
+    { name = "matplotlib" },
     { name = "mlflow" },
     { name = "numpy" },
+    { name = "optuna" },
     { name = "pandas" },
     { name = "psycopg2-binary" },
     { name = "pyarrow" },
@@ -1845,20 +1849,6 @@ inference = [
     { name = "confluent-kafka" },
     { name = "fastavro" },
     { name = "httpx" },
-]
-model = [
-    { name = "boruta" },
-    { name = "imbalanced-learn" },
-    { name = "joblib" },
-    { name = "matplotlib" },
-    { name = "mlflow-skinny" },
-    { name = "numpy" },
-    { name = "optuna" },
-    { name = "pandas" },
-    { name = "psycopg2-binary" },
-    { name = "pyarrow" },
-    { name = "scikit-learn" },
-    { name = "xgboost" },
 ]
 notebooks = [
     { name = "ipykernel" },
@@ -1907,10 +1897,14 @@ testing = [
 
 [package.metadata.requires-dev]
 airflow = [
+    { name = "boruta", specifier = "==0.4.3" },
     { name = "evidently", specifier = "==0.4.36" },
+    { name = "imbalanced-learn", specifier = "==0.14.1" },
     { name = "joblib", specifier = "==1.5.3" },
+    { name = "matplotlib", specifier = "==3.10.9" },
     { name = "mlflow", specifier = "==2.17.2" },
     { name = "numpy", specifier = "==2.4.4" },
+    { name = "optuna", specifier = "==3.6.2" },
     { name = "pandas", specifier = "==2.3.3" },
     { name = "psycopg2-binary", specifier = "==2.9.12" },
     { name = "pyarrow", specifier = "==17.0.0" },
@@ -1927,20 +1921,6 @@ inference = [
     { name = "confluent-kafka", specifier = "==2.14.0" },
     { name = "fastavro", specifier = "==1.12.1" },
     { name = "httpx", specifier = "==0.28.1" },
-]
-model = [
-    { name = "boruta", specifier = "==0.4.3" },
-    { name = "imbalanced-learn", specifier = "==0.14.1" },
-    { name = "joblib", specifier = "==1.5.3" },
-    { name = "matplotlib", specifier = "==3.10.9" },
-    { name = "mlflow-skinny", specifier = "==2.17.2" },
-    { name = "numpy", specifier = "==2.4.4" },
-    { name = "optuna", specifier = "==3.6.2" },
-    { name = "pandas", specifier = "==2.3.3" },
-    { name = "psycopg2-binary", specifier = "==2.9.12" },
-    { name = "pyarrow", specifier = "==17.0.0" },
-    { name = "scikit-learn", specifier = "==1.8.0" },
-    { name = "xgboost", specifier = "==2.1.4" },
 ]
 notebooks = [
     { name = "ipykernel", specifier = "==6.31.0" },
