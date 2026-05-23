@@ -1,5 +1,3 @@
-"""Lógica reutilizable de data drift con Evidently AI."""
-
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -22,34 +20,23 @@ class DataDriftResult:
 
 
 def _build_and_run_report(
-    reference_df: pd.DataFrame,
-    current_df: pd.DataFrame,
-    columns: list[str],
+    reference_df: pd.DataFrame, current_df: pd.DataFrame, columns: list[str]
 ) -> tuple[DataDriftResult, object]:
     from evidently.metric_preset import DataDriftPreset
     from evidently.report import Report
 
     report = Report(metrics=[DataDriftPreset()])
-    report.run(
-        reference_data=reference_df[columns],
-        current_data=current_df[columns],
-    )
+    report.run(reference_data=reference_df[columns], current_data=current_df[columns])
     raw = report.as_dict()
 
     metrics = raw.get("metrics", [])
 
-    dataset_metric = next(
-        (m for m in metrics if "share_of_drifted_columns" in m.get("result", {})),
-        {},
-    )
+    dataset_metric = next((m for m in metrics if "share_of_drifted_columns" in m.get("result", {})), {})
     dataset_result = dataset_metric.get("result", {})
     dataset_drift: bool = bool(dataset_result.get("dataset_drift", False))
     drift_share: float = float(dataset_result.get("share_of_drifted_columns", 0.0))
 
-    column_metric = next(
-        (m for m in metrics if "drift_by_columns" in m.get("result", {})),
-        {},
-    )
+    column_metric = next((m for m in metrics if "drift_by_columns" in m.get("result", {})), {})
     drift_by_columns: dict = column_metric.get("result", {}).get("drift_by_columns", {})
 
     feature_results: dict[str, FeatureDriftResult] = {}
@@ -59,7 +46,7 @@ def _build_and_run_report(
             feature_name=col,
             drift_detected=bool(col_data.get("drift_detected", False)),
             drift_score=float(col_data.get("drift_score", col_data.get("stattest_threshold", 0.0))),
-            stattest_name=str(col_data.get("stattest", "")),
+            stattest_name=str(col_data.get("stattest_name", "")),
         )
 
     drifted_features = [name for name, fr in feature_results.items() if fr.drift_detected]
@@ -73,11 +60,7 @@ def _build_and_run_report(
     return result, report
 
 
-def run_data_drift_report(
-    reference_df: pd.DataFrame,
-    current_df: pd.DataFrame,
-    columns: list[str],
-) -> DataDriftResult:
+def run_data_drift_report(reference_df: pd.DataFrame, current_df: pd.DataFrame, columns: list[str]) -> DataDriftResult:
     result, _ = _build_and_run_report(reference_df, current_df, columns)
     return result
 

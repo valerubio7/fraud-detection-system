@@ -1,5 +1,3 @@
-"""Persistencia de reportes de drift en PostgreSQL."""
-
 import os
 
 
@@ -14,17 +12,13 @@ class DriftReportStore:
         alert_triggered: bool = False,
         remediation_action: str | None = None,
     ) -> int:
-        """Inserta un drift report y devuelve su id."""
         import json
 
         import psycopg2
 
         combined_feature_drifts = {
             "data_drift": feature_drifts,
-            "model_drift": {
-                "detected": model_drift_detected,
-                "f1_degradation": model_f1_degradation,
-            },
+            "model_drift": {"detected": model_drift_detected, "f1_degradation": model_f1_degradation},
         }
         conn = psycopg2.connect(
             host=os.getenv("POSTGRES_HOST", "postgresql"),
@@ -58,7 +52,6 @@ class DriftReportStore:
         return report_id
 
     def save_alert(self, alert_type: str, severity: str, message: str) -> None:
-        """Inserta una entrada en alert_log."""
         import psycopg2
 
         conn = psycopg2.connect(

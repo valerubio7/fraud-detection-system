@@ -1,5 +1,3 @@
-"""Thresholds configurables y lógica de severidad para alertas de drift."""
-
 import logging
 import os
 from dataclasses import dataclass
@@ -7,13 +5,7 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 CRITICAL_FEATURES: frozenset[str] = frozenset(
-    {
-        "tx_count_1h",
-        "amount_sum_1h",
-        "amount_ratio_vs_user_avg",
-        "is_country_new",
-        "seconds_since_last_tx",
-    }
+    {"tx_count_1h", "amount_sum_1h", "amount_ratio_vs_user_avg", "is_country_new", "seconds_since_last_tx"}
 )
 
 DRIFT_THRESHOLD_CRITICAL = float(os.getenv("DRIFT_THRESHOLD_CRITICAL", "0.20"))
@@ -30,10 +22,7 @@ class DriftAction:
     remediation_action: str | None
 
 
-def evaluate_drift_action(
-    data_drift_result: dict,
-    model_drift_result: dict,
-) -> DriftAction:
+def evaluate_drift_action(data_drift_result: dict, model_drift_result: dict) -> DriftAction:
     drift_score: float = data_drift_result.get("drift_score", 0.0)
     feature_drifts: dict = data_drift_result.get("feature_drifts", {})
     model_drift_detected: bool = bool(model_drift_result.get("drift_detected", False))
@@ -89,10 +78,7 @@ def trigger_retrain_dag(tracking_uri: str) -> bool:
     url = f"{airflow_url}/api/v1/dags/retrain_fraud_model/dagRuns"
     try:
         resp = requests.post(
-            url,
-            json={"conf": {"triggered_by": "drift_detection"}},
-            auth=(airflow_user, airflow_pass),
-            timeout=10,
+            url, json={"conf": {"triggered_by": "drift_detection"}}, auth=(airflow_user, airflow_pass), timeout=10
         )
         resp.raise_for_status()
         return True

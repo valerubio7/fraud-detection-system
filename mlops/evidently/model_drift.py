@@ -1,5 +1,3 @@
-"""Detección de model drift comparando métricas de producción vs. referencia de training."""
-
 import os
 from dataclasses import dataclass
 
@@ -58,10 +56,7 @@ def fetch_labeled_predictions(deployment_id: int, lookback_days: int = 7) -> pd.
     return df
 
 
-def run_model_drift_report(
-    reference_metrics: dict,
-    labeled_predictions: pd.DataFrame,
-) -> ModelDriftResult:
+def run_model_drift_report(reference_metrics: dict, labeled_predictions: pd.DataFrame) -> ModelDriftResult:
     if len(labeled_predictions) < _MIN_LABELED_ROWS:
         return ModelDriftResult(
             has_sufficient_data=False,

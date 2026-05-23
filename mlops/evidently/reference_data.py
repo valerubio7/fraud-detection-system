@@ -1,16 +1,9 @@
-"""Utilidades para cargar el dataset de referencia desde MLflow."""
-
 from pathlib import Path
 
 import pandas as pd
 
 
-def load_reference_dataset(
-    run_id: str,
-    tracking_uri: str,
-    dst_dir: str = "/tmp/evidently_ref",
-) -> pd.DataFrame:
-    """Descarga reference_dataset.parquet del run de MLflow y lo retorna como DataFrame."""
+def load_reference_dataset(run_id: str, tracking_uri: str, dst_dir: str = "/tmp/evidently_ref") -> pd.DataFrame:
     from mlflow.tracking import MlflowClient
 
     client = MlflowClient(tracking_uri=tracking_uri)
