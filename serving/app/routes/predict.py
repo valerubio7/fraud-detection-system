@@ -4,7 +4,7 @@ import os
 import time
 
 import numpy as np
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
 from serving.app.schemas import BatchPredictionRequest, BatchPredictionResponse, PredictionResponse, TransactionRequest
 
@@ -34,6 +34,8 @@ _SLOW_REQUEST_THRESHOLD_MS = float(os.getenv("SLOW_REQUEST_THRESHOLD_MS", "50.0"
 )
 async def predict(req: TransactionRequest, request: Request, background_tasks: BackgroundTasks) -> PredictionResponse:
     model_loader = request.app.state.model_loader
+    if model_loader._model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
     prediction_store = request.app.state.prediction_store
     cache = request.app.state.prediction_cache
 
@@ -108,6 +110,8 @@ async def predict_batch(
     req: BatchPredictionRequest, request: Request, background_tasks: BackgroundTasks
 ) -> BatchPredictionResponse:
     model_loader = request.app.state.model_loader
+    if model_loader._model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
     prediction_store = request.app.state.prediction_store
     threshold_score = _FRAUD_SCORE_THRESHOLD
     n = len(req.items)

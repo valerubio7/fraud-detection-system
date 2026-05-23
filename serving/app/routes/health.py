@@ -40,7 +40,7 @@ def health(request: Request) -> JSONResponse:
 )
 def model_info(request: Request) -> dict:
     loader = getattr(request.app.state, "model_loader", None)
-    if loader is None or loader._model is None:
+    if loader is None or loader._model is None or loader.loaded_at is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     return {
         "model_name": loader.model_name,
