@@ -5,7 +5,7 @@ services:
       - ./offline_features:/app/offline_features
       - ./artifacts:/app/artifacts
 
-  fastapi:
+  serving:
     # Bind-mount API code so edits on host trigger reload without rebuilding the image.
     volumes:
       - ./serving:/app/serving

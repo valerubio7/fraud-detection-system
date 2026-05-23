@@ -55,14 +55,14 @@ groups:
                     type: gt
                     params: [5]
 
-      - uid: alert-fastapi-p99-latency
-        title: "FastAPI P99 Latency High"
+      - uid: alert-serving-p99-latency
+        title: "Serving P99 Latency High"
         condition: C
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "FastAPI P99 latency exceeds 200ms"
+          summary: "Serving P99 latency exceeds 200ms"
           description: "Current P99 latency: {{ $values.B.Value | printf \"%.0f\" }}ms"
         data:
           - refId: A

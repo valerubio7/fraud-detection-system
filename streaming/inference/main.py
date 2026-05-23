@@ -16,7 +16,7 @@ from .prediction_publisher import PredictionPublisher
 
 logger = logging.getLogger(__name__)
 
-FASTAPI_BASE_URL = os.getenv("FASTAPI_BASE_URL", "http://fastapi:8000")
+FASTAPI_BASE_URL = os.getenv("FASTAPI_BASE_URL", "http://serving:8000")
 INFERENCE_FAILURE_THRESHOLD = int(os.getenv("INFERENCE_FAILURE_THRESHOLD", "5"))
 INFERENCE_COOLDOWN_SECONDS = float(os.getenv("INFERENCE_COOLDOWN_SECONDS", "30.0"))
 INFERENCE_RATE_LIMIT_MS = int(os.getenv("INFERENCE_RATE_LIMIT_MS", "0"))

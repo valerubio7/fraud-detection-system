@@ -199,14 +199,14 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-      fastapi:
+      serving:
         condition: service_healthy
     environment:
       KAFKA_BROKER_URL: ${KAFKA_BROKER_URL}
       KAFKA_TOPICS_FEATURES: ${KAFKA_TOPICS_FEATURES}
       KAFKA_TOPICS_PREDICTIONS: ${KAFKA_TOPICS_PREDICTIONS}
       KAFKA_TOPICS_ALERTS: ${KAFKA_TOPICS_ALERTS}
-      FASTAPI_BASE_URL: http://fastapi:8000
+      FASTAPI_BASE_URL: http://serving:8000
       INFERENCE_FAILURE_THRESHOLD: 5
       INFERENCE_COOLDOWN_SECONDS: 30
       INFERENCE_RATE_LIMIT_MS: 0
@@ -294,7 +294,7 @@ services:
     networks:
       - mlops-net
 
-  fastapi:
+  serving:
     build:
       context: .
       dockerfile: docker/serving/Dockerfile
