@@ -11,4 +11,10 @@ COPY pyproject.toml uv.lock ./
 
 RUN uv sync --frozen --only-group airflow
 
+COPY offline_features /opt/airflow/project/offline_features
+COPY model /opt/airflow/project/model
+COPY mlops /opt/airflow/project/mlops
+
+ENV PYTHONPATH=/opt/airflow/project
+
 USER airflow

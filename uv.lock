@@ -1831,6 +1831,7 @@ airflow = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "psycopg2-binary" },
+    { name = "pyarrow" },
     { name = "scikit-learn" },
     { name = "xgboost" },
 ]
@@ -1912,6 +1913,7 @@ airflow = [
     { name = "numpy", specifier = "==2.4.4" },
     { name = "pandas", specifier = "==2.3.3" },
     { name = "psycopg2-binary", specifier = "==2.9.12" },
+    { name = "pyarrow", specifier = "==17.0.0" },
     { name = "scikit-learn", specifier = "==1.8.0" },
     { name = "xgboost", specifier = "==2.1.4" },
 ]
