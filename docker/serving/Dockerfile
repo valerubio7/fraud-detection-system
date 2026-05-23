@@ -16,9 +16,7 @@ COPY --chown=app:app pyproject.toml uv.lock ./
 
 RUN uv sync --frozen --no-dev --no-install-project --group serving
 
-COPY --chown=app:app config.py ./
 COPY --chown=app:app serving ./serving
-COPY --chown=app:app offline_features ./offline_features
 
 USER app
 

@@ -297,7 +297,7 @@ services:
   fastapi:
     build:
       context: .
-      dockerfile: docker/fastapi/Dockerfile
+      dockerfile: docker/serving/Dockerfile
     restart: unless-stopped
     depends_on:
       postgresql:
