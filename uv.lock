@@ -1834,7 +1834,6 @@ inference = [
     { name = "confluent-kafka" },
     { name = "fastavro" },
     { name = "httpx" },
-    { name = "pydantic-settings" },
 ]
 model = [
     { name = "boruta" },
@@ -1885,8 +1884,6 @@ testing = [
     { name = "httpx" },
     { name = "locust" },
     { name = "numpy" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -1907,7 +1904,6 @@ inference = [
     { name = "confluent-kafka", specifier = "==2.14.0" },
     { name = "fastavro", specifier = "==1.12.1" },
     { name = "httpx", specifier = "==0.28.1" },
-    { name = "pydantic-settings", specifier = "==2.14.1" },
 ]
 model = [
     { name = "boruta", specifier = "==0.4.3" },
@@ -1958,8 +1954,6 @@ testing = [
     { name = "httpx", specifier = "==0.28.1" },
     { name = "locust", specifier = "==2.44.0" },
     { name = "numpy", specifier = "==2.4.4" },
-    { name = "pydantic", specifier = "==2.13.2" },
-    { name = "pydantic-settings", specifier = "==2.14.1" },
     { name = "pytest", specifier = "==8.4.2" },
     { name = "pytest-asyncio", specifier = "==0.26.0" },
     { name = "pytest-cov", specifier = "==5.0.0" },
@@ -4761,20 +4755,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/8e/a8/258a32878140347532be4e44c6f3b1ace3b52b9c9ca7548a65ce18adf4b4/pydantic_core-2.46.2-pp311-pypy311_pp73-musllinux_1_1_armv7l.whl", hash = "sha256:807eeda5551f6884d3b4421578be37be50ddb7a58832348e99617a6714a73748", size = 2319882, upload-time = "2026-04-17T09:10:21.872Z" },
     { url = "https://files.pythonhosted.org/packages/13/b9/5071c298a0f91314a5402b8c56e0efbcebe77085327d0b4df7dc9cb0b674/pydantic_core-2.46.2-pp311-pypy311_pp73-musllinux_1_1_x86_64.whl", hash = "sha256:fcaa1c3c846a7f6686b38fe493d1b2e8007380e293bfef6a9354563c026cbf36", size = 2348065, upload-time = "2026-04-17T09:11:08.263Z" },
     { url = "https://files.pythonhosted.org/packages/75/f3/0a7087e5f861d66ca64ce927230b397cc264c87b712156e6a93b26a459c8/pydantic_core-2.46.2-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:154dbfdfb11b8cbd8ff4d00d0b81e3d19f4cb4bedd5aa9f091060ba071474c6a", size = 2192159, upload-time = "2026-04-17T09:11:20.123Z" },
-]
-
-[[package]]
-name = "pydantic-settings"
-version = "2.14.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "typing-inspection" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/07/60/1d1e59c9c90d54591469ada7d268251f71c24bdb765f1a8a832cee8c6653/pydantic_settings-2.14.1.tar.gz", hash = "sha256:e874d3bec7e787b0c9958277956ed9b4dd5de6a80e162188fdaff7c5e26fd5fa", size = 235551, upload-time = "2026-05-08T13:40:06.542Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ae/8d/f1af3832f5e6eb13ba94ee809e72b8ecb5eef226d27ee0bef7d963d943c7/pydantic_settings-2.14.1-py3-none-any.whl", hash = "sha256:6e3c7edfd8277687cdc598f56e5cff0e9bfff0910a3749deaa8d4401c3a2b9de", size = 60964, upload-time = "2026-05-08T13:40:04.958Z" },
 ]
 
 [[package]]

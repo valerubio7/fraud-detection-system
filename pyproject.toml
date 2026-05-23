@@ -35,7 +35,6 @@ inference = [
   "confluent-kafka==2.14.0",
   "fastavro==1.12.1",
   "httpx==0.28.1",
-  "pydantic-settings==2.14.1",
 ]
 notebooks = [
   "ipykernel==6.31.0",
@@ -66,8 +65,6 @@ testing = [
   "pytest-asyncio==0.26.0",
   "httpx==0.28.1",
   "numpy==2.4.4",
-  "pydantic==2.13.2",
-  "pydantic-settings==2.14.1",
   "fastapi==0.136.0",
   "apache-airflow==2.11.0",
   "evidently==0.4.36",
