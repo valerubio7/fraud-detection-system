@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import sys
 from dataclasses import dataclass
@@ -9,6 +10,8 @@ import psycopg2
 from mlflow.tracking import MlflowClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -49,27 +52,32 @@ def promote_to_production(model_name: str, model_version: str) -> PromotionResul
         stage="Production",
         promoted_at=promoted_at.isoformat(),
     )
-    _print_promotion_summary(model_name, run_id, deployment_id, promoted_at, run_metrics, result)
+    _log_promotion_summary(model_name, run_id, deployment_id, promoted_at, run_metrics, result)
     return result
 
 
 def _verify_staging_version(client: MlflowClient, model_name: str, model_version: str) -> tuple[object, str]:
-    print(f"Checking model {model_name} version {model_version} in MLflow...")
+    logger.info("Checking model %s version %s in MLflow...", model_name, model_version)
     try:
         mv = client.get_model_version(model_name, model_version)
     except Exception as exc:
-        print(f"Error: Model {model_name} version {model_version} not found in MLflow: {exc}")
+        logger.error("Model %s version %s not found in MLflow: %s", model_name, model_version, exc)
         sys.exit(1)
 
     if mv.current_stage != "Staging":
-        print(f"Error: Model {model_name} v{model_version} is in stage '{mv.current_stage}', expected 'Staging'.")
+        logger.error(
+            "Model %s v%s is in stage '%s', expected 'Staging'.",
+            model_name,
+            model_version,
+            mv.current_stage,
+        )
         sys.exit(1)
 
     return mv, mv.run_id
 
 
 def _fetch_run_metadata(client: MlflowClient, run_id: str) -> tuple[dict, dict, datetime]:
-    print(f"Fetching run {run_id} metadata from MLflow...")
+    logger.info("Fetching run %s metadata from MLflow...", run_id)
     run = client.get_run(run_id)
     run_start = datetime.fromtimestamp(run.info.start_time / 1000.0, tz=UTC)
     return run.data.metrics, run.data.params, run_start
@@ -99,7 +107,7 @@ def _record_deployment_in_db(
 
             if row is not None:
                 deployment_id = row[0]
-                print(f"Deployment record already exists for run {run_id} (id={deployment_id}), reusing.")
+                logger.info("Deployment record already exists for run %s (id=%s), reusing.", run_id, deployment_id)
             else:
                 cur.execute(
                     """
@@ -124,16 +132,16 @@ def _record_deployment_in_db(
                     ),
                 )
                 deployment_id = cur.fetchone()[0]
-                print(f"Inserted deployment record id={deployment_id}.")
+                logger.info("Inserted deployment record id=%s.", deployment_id)
 
-            print(f"Calling activate_model_version({deployment_id})...")
+            logger.info("Calling activate_model_version(%s)...", deployment_id)
             cur.execute("SELECT public.activate_model_version(%s)", (deployment_id,))
 
         conn.commit()
-        print("PostgreSQL transaction committed.")
+        logger.info("PostgreSQL transaction committed.")
     except Exception as exc:
         conn.rollback()
-        print(f"Error during PostgreSQL transaction: {exc}")
+        logger.error("PostgreSQL transaction failed: %s", exc)
         sys.exit(1)
     finally:
         conn.close()
@@ -142,7 +150,7 @@ def _record_deployment_in_db(
 
 
 def _transition_mlflow_stage(client: MlflowClient, model_name: str, model_version: str) -> None:
-    print(f"Transitioning {model_name} v{model_version} to Production...")
+    logger.info("Transitioning %s v%s to Production...", model_name, model_version)
     try:
         client.transition_model_version_stage(
             name=model_name,
@@ -150,13 +158,13 @@ def _transition_mlflow_stage(client: MlflowClient, model_name: str, model_versio
             stage="Production",
             archive_existing_versions=True,
         )
-        print("Stage transition complete.")
+        logger.info("Stage transition complete.")
     except Exception as exc:
-        print(f"Error: MLflow stage transition failed: {exc}")
+        logger.error("MLflow stage transition failed: %s", exc)
         sys.exit(1)
 
 
-def _print_promotion_summary(
+def _log_promotion_summary(
     model_name: str,
     run_id: str,
     deployment_id: int,
@@ -164,19 +172,18 @@ def _print_promotion_summary(
     metrics: dict,
     result: PromotionResult,
 ) -> None:
-    print()
-    print("=" * 50)
-    print("MODEL PROMOTION REPORT")
-    print("=" * 50)
-    print(f"  Model:              {model_name}")
-    print(f"  Version:            {result.model_version}")
-    print("  Stage:              Production")
-    print(f"  MLflow Run ID:      {run_id}")
-    print(f"  Deployment DB ID:   {deployment_id}")
-    print(f"  Promoted at:        {promoted_at.isoformat()}")
-    print(f"  F1-score:           {metrics.get('f1_score', 'N/A')}")
-    print(f"  AUC-ROC:            {metrics.get('auc_roc', 'N/A')}")
-    print("=" * 50)
+    logger.info("=" * 50)
+    logger.info("MODEL PROMOTION REPORT")
+    logger.info("=" * 50)
+    logger.info("  Model:              %s", model_name)
+    logger.info("  Version:            %s", result.model_version)
+    logger.info("  Stage:              Production")
+    logger.info("  MLflow Run ID:      %s", run_id)
+    logger.info("  Deployment DB ID:   %s", deployment_id)
+    logger.info("  Promoted at:        %s", promoted_at.isoformat())
+    logger.info("  F1-score:           %s", metrics.get("f1_score", "N/A"))
+    logger.info("  AUC-ROC:            %s", metrics.get("auc_roc", "N/A"))
+    logger.info("=" * 50)
 
 
 def _parse_timestamp_with_fallback(raw: str | None, fallback: datetime) -> datetime:
@@ -196,6 +203,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = parse_args()
     promote_to_production(args.model_name, args.model_version)
 

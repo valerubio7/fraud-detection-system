@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import sys
 import time
@@ -23,6 +24,8 @@ MIN_F1 = 0.85
 MIN_AUC_ROC = 0.90
 MAX_LATENCY_P99_MS = 50.0
 MIN_F1_IMPROVEMENT = 0.02
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -87,13 +90,13 @@ def run_quality_gates(model_name: str, model_version: str) -> GateResult:
     training_data_from = _parse_timestamp(run_params.get("training_data_from"))
     training_data_to = _parse_timestamp(run_params.get("training_data_to"))
 
-    print(f"Loading model {model_name} version {model_version} from MLflow...")
+    logger.info("Loading model %s version %s from MLflow...", model_name, model_version)
     model = load_model(model_name, model_version)
 
-    print("Loading test data from TimescaleDB...")
+    logger.info("Loading test data from TimescaleDB...")
     test_df = _load_test_data(training_data_from, training_data_to)
     y_test = test_df["is_fraud"].astype(int)
-    print(f"Test set size: {len(test_df)} transactions")
+    logger.info("Test set size: %d transactions", len(test_df))
 
     encoders_dir = os.getenv("MODEL_ARTIFACTS_DIR", "artifacts/model")
     X_test = compute_features(test_df, encoders_dir)
@@ -115,7 +118,7 @@ def run_quality_gates(model_name: str, model_version: str) -> GateResult:
     )
 
     _log_gate_metrics_to_mlflow(model_name, model_version, result)
-    _print_gate_summary(result)
+    _log_gate_summary(result)
     _update_quality_gate_tag(model_name, model_version, result)
     return result
 
@@ -124,7 +127,7 @@ def compare_challenger_vs_champion(challenger_name: str, challenger_version: str
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
     client = MlflowClient()
 
-    print("Loading champion model from Production stage...")
+    logger.info("Loading champion model from Production stage...")
     champion = load_champion_model(challenger_name)
 
     if champion is None:
@@ -137,10 +140,10 @@ def compare_challenger_vs_champion(challenger_name: str, challenger_version: str
             challenger_wins=True,
             reason="No champion model in Production stage — challenger wins by default",
         )
-        _print_comparison_summary(result)
+        _log_comparison_summary(result)
         return result
 
-    print("Loading challenger model...")
+    logger.info("Loading challenger model...")
     challenger = load_model(challenger_name, challenger_version)
 
     _, challenger_metrics, challenger_params = _get_run_for_model_version(client, challenger_name, challenger_version)
@@ -151,10 +154,10 @@ def compare_challenger_vs_champion(challenger_name: str, challenger_version: str
     _, champion_metrics, _ = _get_run_for_production(client, challenger_name)
     champion_threshold = champion_metrics.get("optimal_threshold", 0.5)
 
-    print("Loading test data for comparison...")
+    logger.info("Loading test data for comparison...")
     test_df = _load_test_data(training_data_from, training_data_to)
     y_test = test_df["is_fraud"].astype(int)
-    print(f"Test set size: {len(test_df)} transactions")
+    logger.info("Test set size: %d transactions", len(test_df))
 
     encoders_dir = os.getenv("MODEL_ARTIFACTS_DIR", "artifacts/model")
     X_test = compute_features(test_df, encoders_dir)
@@ -186,7 +189,7 @@ def compare_challenger_vs_champion(challenger_name: str, challenger_version: str
         challenger_wins=challenger_wins,
         reason=reason,
     )
-    _print_comparison_summary(result)
+    _log_comparison_summary(result)
     return result
 
 
@@ -275,7 +278,7 @@ def _update_quality_gate_tag(model_name: str, model_version: str, result: GateRe
         tag_value = "passed" if result.passed else "failed"
         client.set_model_version_tag(model_name, model_version, "quality_gates", tag_value)
     except Exception as exc:
-        print(f"Warning: Failed to update quality_gates tag: {exc}")
+        logger.warning("Failed to update quality_gates tag: %s", exc)
 
 
 def _log_gate_metrics_to_mlflow(model_name: str, model_version: str, result: GateResult) -> None:
@@ -292,55 +295,51 @@ def _log_gate_metrics_to_mlflow(model_name: str, model_version: str, result: Gat
                         "quality_gate_passed": float(result.passed),
                     }
                 )
-            print(f"Metrics logged to MLflow run {run_id}")
+            logger.info("Metrics logged to MLflow run %s", run_id)
         else:
-            print("Warning: Could not find MLflow run for this model version.")
+            logger.warning("Could not find MLflow run for this model version.")
     except Exception as exc:
-        print(f"Warning: Failed to log metrics to MLflow: {exc}")
+        logger.warning("Failed to log metrics to MLflow: %s", exc)
 
 
-def _print_gate_summary(result: GateResult) -> None:
-    print()
-    print("=" * 50)
-    print("QUALITY GATES REPORT")
-    print("=" * 50)
+def _log_gate_summary(result: GateResult) -> None:
+    logger.info("=" * 50)
+    logger.info("QUALITY GATES REPORT")
+    logger.info("=" * 50)
     for label, value, passed, threshold in [
         ("F1-score (fraud)", result.f1_score, result.f1_passed, f">= {MIN_F1}"),
         ("AUC-ROC", result.auc_roc, result.auc_roc_passed, f">= {MIN_AUC_ROC}"),
-        (
-            "Latency P99 (ms)",
-            result.latency_p99_ms,
-            result.latency_passed,
-            f"<= {MAX_LATENCY_P99_MS}",
-        ),
+        ("Latency P99 (ms)", result.latency_p99_ms, result.latency_passed, f"<= {MAX_LATENCY_P99_MS}"),
     ]:
-        print(f"  {label:<22} {value:.4f}  {'PASS' if passed else 'FAIL':4s}  ({threshold})")
-    print("-" * 50)
-    print(f"  {'Overall:':<22} {'PASS' if result.passed else 'FAIL'}")
-    print("=" * 50)
+        logger.info("  %-22s %.4f  %-4s  (%s)", label, value, "PASS" if passed else "FAIL", threshold)
+    logger.info("-" * 50)
+    logger.info("  %-22s %s", "Overall:", "PASS" if result.passed else "FAIL")
+    logger.info("=" * 50)
 
 
-def _print_comparison_summary(result: ChampionComparisonResult) -> None:
-    print()
-    print("=" * 50)
-    print("CHALLENGER vs CHAMPION COMPARISON")
-    print("=" * 50)
+def _log_comparison_summary(result: ChampionComparisonResult) -> None:
+    logger.info("=" * 50)
+    logger.info("CHALLENGER vs CHAMPION COMPARISON")
+    logger.info("=" * 50)
     if result.champion_f1 is None:
-        print("  No champion model in Production stage.")
-        print("  Challenger wins by default.")
-        print("=" * 50)
+        logger.info("  No champion model in Production stage.")
+        logger.info("  Challenger wins by default.")
+        logger.info("=" * 50)
         return
-    print(f"  {'Metric':<22} {'Challenger':>10} {'Champion':>10} {'Diff':>10}")
-    print(f"  {'------':<22} {'----------':>10} {'----------':>10} {'------':>10}")
-    print(
-        f"  {'F1-score (fraud)':<22} {result.challenger_f1:>10.4f} "
-        f"{result.champion_f1:>10.4f} {result.f1_difference:>+10.4f}"
+    logger.info("  %-22s %10s %10s %10s", "Metric", "Challenger", "Champion", "Diff")
+    logger.info("  %-22s %10s %10s %10s", "------", "----------", "----------", "------")
+    logger.info(
+        "  %-22s %10.4f %10.4f %+10.4f",
+        "F1-score (fraud)",
+        result.challenger_f1,
+        result.champion_f1,
+        result.f1_difference,
     )
-    print(f"  {'AUC-ROC':<22} {result.challenger_auc_roc:>10.4f} {result.champion_auc_roc:>10.4f} {'':>10}")
-    print("-" * 50)
-    print(f"  {'Verdict:':<22} {'WIN' if result.challenger_wins else 'LOSE'}")
-    print(f"  Reason: {result.reason}")
-    print("=" * 50)
+    logger.info("  %-22s %10.4f %10.4f %10s", "AUC-ROC", result.challenger_auc_roc, result.champion_auc_roc, "")
+    logger.info("-" * 50)
+    logger.info("  %-22s %s", "Verdict:", "WIN" if result.challenger_wins else "LOSE")
+    logger.info("  Reason: %s", result.reason)
+    logger.info("=" * 50)
 
 
 def parse_args() -> argparse.Namespace:
@@ -352,6 +351,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = parse_args()
     result = run_quality_gates(args.model_name, args.model_version)
     if not result.passed:
@@ -360,9 +360,9 @@ def main() -> None:
     if args.compare:
         comparison = compare_challenger_vs_champion(args.model_name, args.model_version)
         if not comparison.challenger_wins:
-            print(f"\nChallenger rejected: {comparison.reason}")
+            logger.warning("Challenger rejected: %s", comparison.reason)
             sys.exit(1)
-        print("\nChallenger passed all checks — ready for promotion.")
+        logger.info("Challenger passed all checks — ready for promotion.")
 
 
 if __name__ == "__main__":

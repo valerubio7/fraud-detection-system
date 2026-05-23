@@ -331,7 +331,7 @@ def log_mlflow_outputs(
 
 def main() -> None:
     args = parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s", stream=sys.stdout)
     np.random.seed(args.seed)
 
     if args.tune and importlib.util.find_spec("optuna") is None:
@@ -545,8 +545,8 @@ def main() -> None:
         client.set_model_version_tag(model_name, registered_version, "quality_gates", "pending")
         if tracking_uri is not None:
             run_url = f"{tracking_uri}/#/experiments/{experiment_id}/runs/{run_id}"
-            print(f"MLflow run_id: {run_id}")
-            print(f"MLflow run URL: {run_url}")
+            logger.info("MLflow run_id: %s", run_id)
+            logger.info("MLflow run URL: %s", run_url)
     except Exception as exc:
         logger.warning("MLflow logging failed: %s — artifacts saved to %s", exc, output_dir)
     log_summary(y_full, split_sizes, params, output_dir)
