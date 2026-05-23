@@ -27,12 +27,12 @@ Metadata del modelo activo.
 
 ```json
 {
-  "model_name": "fraud-detection-xgb",
-  "model_version": "3",
+  "model_name": "FraudDetectionModel",
+  "model_version": "2",
   "model_stage": "Production",
   "loaded_at": "2026-05-16T10:00:00",
   "fraud_score_threshold": 0.5,
-  "deployment_id": 7
+  "deployment_id": 1
 }
 ```
 
@@ -52,10 +52,17 @@ Predicción individual.
   "device_type": "mobile",
   "ip_hash": "a1b2c3d4",
   "features": {
-    "tx_count_1h": 5,
+    "tx_count_1h": 5.0,
+    "tx_count_24h": 12.0,
+    "tx_count_7d": 48.0,
+    "amount_sum_1h": 500.00,
     "amount_sum_24h": 1200.50,
     "seconds_since_last_tx": 340.0,
-    ...
+    "amount_ratio_vs_user_avg": 1.1,
+    "is_country_new": 0.0,
+    "distinct_countries_seen": 2.0,
+    "is_merchant_new": 0.0,
+    "distinct_merchants_seen": 5.0
   }
 }
 ```
@@ -69,7 +76,7 @@ El campo `features` contiene las 11 features de ventana y perfil histórico comp
   "transaction_id": "tx-001",
   "prediction_score": 0.87,
   "prediction_label": true,
-  "model_version": "3",
+  "model_version": "2",
   "latency_ms": 12.3
 }
 ```
@@ -80,7 +87,7 @@ Predicción batch (1 a 500 transacciones). Internamente hace `np.vstack` para in
 
 ```json
 {
-  "items": [ { ... }, { ... } ],
+  "predictions": [ { "..." }, { "..." } ],
   "total": 2,
   "latency_ms": 18.5
 }
@@ -97,7 +104,7 @@ Carga del modelo en el startup del lifecycle:
 3. Carga XGBoost (`xgboost_model.joblib`) y el encoder categórico (`categorical_encoder.joblib`)
 4. Consulta en PostgreSQL el `deployment_id` activo
 
-**`prepare_features(raw, window_features)`** produce un array numpy de **16 features**:
+**`prepare_features(raw, window_features)`** produce un array numpy de **17 features**:
 
 | # | Feature | Fuente |
 |---|---|---|
@@ -106,7 +113,8 @@ Carga del modelo en el startup del lifecycle:
 | 2 | `day_of_week` | `raw.timestamp.weekday()` |
 | 3 | `merchant_category_encoded` | Target encoding con fallback a media global |
 | 4 | `country_encoded` | Target encoding con fallback a media global |
-| 5-15 | 11 features de ventana | `window_features` (recibidas de `streaming.features`) |
+| 5 | `device_type_encoded` | Ordinal encoding con fallback a -1 para valores no vistos |
+| 6–16 | 11 features de ventana | `window_features` (recibidas de `streaming.features`) |
 
 Si el modelo no está disponible, el servicio arranca en modo **degraded** (health check lo reporta, predict devuelve 503).
 
@@ -121,7 +129,7 @@ Cache en Redis con TTL de 60s. Si Redis no está disponible, degrada gracefulmen
 ## Levantar
 
 ```bash
-docker compose up -d fastapi
+docker compose up -d serving
 ```
 
 La API queda en `http://localhost:8000` con docs interactivos en `/docs` y `/redoc`.
