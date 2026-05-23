@@ -1,7 +1,6 @@
 FROM python:3.11-slim
 
-ENV UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy \
+ENV UV_LINK_MODE=copy \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:${PATH}"
 
@@ -19,3 +18,5 @@ COPY offline_features ./offline_features
 RUN groupadd --system app && useradd --system --gid app --create-home app && chown -R app:app /app
 
 USER app
+
+CMD ["python", "model/pipeline/train.py"]
