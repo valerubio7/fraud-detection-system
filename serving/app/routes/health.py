@@ -8,16 +8,14 @@ router = APIRouter(tags=["health"])
 
 @router.get(
     "/health",
-    summary="Estado del servicio",
+    summary="Service health",
     description=(
-        "Devuelve el estado actual del servicio. "
-        "`status: ok` indica que el modelo está cargado y listo para inferencia. "
-        "`status: degraded` indica que el modelo no pudo cargarse al startup — "
-        "las predicciones no están disponibles pero el servicio sigue respondiendo."
+        "Returns the current service status. "
+        "`status: ok` means the model is loaded and ready for inference. "
+        "`status: degraded` means the model failed to load at startup — "
+        "predictions are unavailable but the service is still responding."
     ),
-    responses={
-        200: {"description": "Servicio operativo (ok o degraded)."},
-    },
+    responses={200: {"description": "Service is operational (ok or degraded)."}},
 )
 def health(request: Request) -> JSONResponse:
     loader = getattr(request.app.state, "model_loader", None)
@@ -29,15 +27,15 @@ def health(request: Request) -> JSONResponse:
 
 @router.get(
     "/model/info",
-    summary="Información del modelo cargado",
+    summary="Loaded model information",
     description=(
-        "Devuelve los metadatos del modelo XGBoost actualmente en memoria: "
-        "versión, stage de MLflow, timestamp de carga, threshold de clasificación, "
-        "e ID de deployment en PostgreSQL."
+        "Returns metadata for the XGBoost model currently in memory: "
+        "version, MLflow stage, load timestamp, classification threshold, "
+        "and PostgreSQL deployment ID."
     ),
     responses={
-        200: {"description": "Información del modelo activo."},
-        503: {"description": "El modelo no está cargado — el servicio está en modo degradado."},
+        200: {"description": "Active model information."},
+        503: {"description": "Model is not loaded — service is in degraded mode."},
     },
 )
 def model_info(request: Request) -> dict:

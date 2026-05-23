@@ -6,37 +6,33 @@ import time
 import numpy as np
 from fastapi import APIRouter, BackgroundTasks, Request
 
-from ..schemas.prediction import (
-    BatchPredictionRequest,
-    BatchPredictionResponse,
-    PredictionResponse,
-    TransactionRequest,
-)
+from serving.app.schemas import BatchPredictionRequest, BatchPredictionResponse, PredictionResponse, TransactionRequest
 
 router = APIRouter(tags=["predictions"])
 _log = logging.getLogger(__name__)
+
+_FRAUD_SCORE_THRESHOLD = float(os.getenv("FRAUD_SCORE_THRESHOLD", "0.5"))
+_SLOW_REQUEST_THRESHOLD_MS = float(os.getenv("SLOW_REQUEST_THRESHOLD_MS", "50.0"))
 
 
 @router.post(
     "/predict",
     response_model=PredictionResponse,
-    summary="Predecir fraude en una transacción",
+    summary="Predict fraud on a single transaction",
     description=(
-        "Evalúa una transacción bancaria y devuelve la probabilidad de fraude. "
-        "Las features deben ser pre-calculadas por el pipeline de feature engineering "
+        "Evaluates a bank transaction and returns the fraud probability. "
+        "Features must be pre-computed by the online feature engineering pipeline "
         "(`SlidingWindowStore` + `HistoricalProfileStore`). "
-        "La predicción se guarda en PostgreSQL de forma asíncrona (no bloquea la respuesta). "
-        "Requests con el mismo `transaction_id` devuelven el resultado cacheado."
+        "The prediction is persisted to PostgreSQL asynchronously (does not block the response). "
+        "Requests with the same `transaction_id` return the cached result."
     ),
     responses={
-        200: {"description": "Predicción exitosa."},
-        422: {"description": "Request inválido: `amount` <= 0 o campos requeridos faltantes."},
-        503: {"description": "El modelo no está disponible (modo degradado)."},
+        200: {"description": "Successful prediction."},
+        422: {"description": "Invalid request: `amount` <= 0 or required fields missing."},
+        503: {"description": "Model is not available (degraded mode)."},
     },
 )
-async def predict(
-    req: TransactionRequest, request: Request, background_tasks: BackgroundTasks
-) -> PredictionResponse:
+async def predict(req: TransactionRequest, request: Request, background_tasks: BackgroundTasks) -> PredictionResponse:
     model_loader = request.app.state.model_loader
     prediction_store = request.app.state.prediction_store
     cache = request.app.state.prediction_cache
@@ -61,15 +57,13 @@ async def predict(
     prediction_score = float(model_loader._model.predict_proba(features_array)[0, 1])
     inference_ms = (time.perf_counter() - t1) * 1000
 
-    prediction_label = prediction_score >= float(os.getenv("FRAUD_SCORE_THRESHOLD", "0.5"))
+    prediction_label = prediction_score >= _FRAUD_SCORE_THRESHOLD
     latency_ms = feature_ms + inference_ms
 
-    background_tasks.add_task(
-        prediction_store.save, req.transaction_id, prediction_score, prediction_label, latency_ms
-    )
+    background_tasks.add_task(prediction_store.save, req.transaction_id, prediction_score, prediction_label, latency_ms)
 
     total_ms = latency_ms
-    threshold = float(os.getenv("SLOW_REQUEST_THRESHOLD_MS", "50.0"))
+    threshold = _SLOW_REQUEST_THRESHOLD_MS
     log_payload = {
         "event": "predict",
         "transaction_id": req.transaction_id,
@@ -97,18 +91,17 @@ async def predict(
 @router.post(
     "/predict/batch",
     response_model=BatchPredictionResponse,
-    summary="Predecir fraude en un batch de transacciones",
+    summary="Predict fraud on a batch of transactions",
     description=(
-        "Evalúa entre 1 y 500 transacciones en una sola llamada. "
-        "El batch se procesa vectorizando las features con `numpy.vstack` y una sola "
-        "llamada a `predict_proba`, lo que mejora el throughput respecto a llamadas individuales. "
-        "La latencia reportada es la del batch completo; la latencia por transacción "
-        "es `latency_ms / total`."
+        "Evaluates between 1 and 500 transactions in a single call. "
+        "The batch is processed by vectorizing features with `numpy.vstack` and a single "
+        "`predict_proba` call, improving throughput over individual requests. "
+        "The reported latency covers the full batch; per-transaction latency is `latency_ms / total`."
     ),
     responses={
-        200: {"description": "Predicciones del batch."},
-        422: {"description": "Lista vacía o con más de 500 items."},
-        503: {"description": "El modelo no está disponible."},
+        200: {"description": "Batch predictions."},
+        422: {"description": "Empty list or more than 500 items."},
+        503: {"description": "Model is not available."},
     },
 )
 async def predict_batch(
@@ -116,7 +109,7 @@ async def predict_batch(
 ) -> BatchPredictionResponse:
     model_loader = request.app.state.model_loader
     prediction_store = request.app.state.prediction_store
-    threshold_score = float(os.getenv("FRAUD_SCORE_THRESHOLD", "0.5"))
+    threshold_score = _FRAUD_SCORE_THRESHOLD
     n = len(req.items)
 
     t0 = time.perf_counter()
@@ -142,9 +135,7 @@ async def predict_batch(
     predictions = []
     for item, score in zip(req.items, scores, strict=False):
         label = float(score) >= threshold_score
-        background_tasks.add_task(
-            prediction_store.save, item.transaction_id, float(score), label, per_item_latency_ms
-        )
+        background_tasks.add_task(prediction_store.save, item.transaction_id, float(score), label, per_item_latency_ms)
         predictions.append(
             PredictionResponse(
                 transaction_id=item.transaction_id,
@@ -156,7 +147,7 @@ async def predict_batch(
         )
 
     total_ms = feature_ms + inference_ms
-    threshold_slow = float(os.getenv("SLOW_REQUEST_THRESHOLD_MS", "50.0"))
+    threshold_slow = _SLOW_REQUEST_THRESHOLD_MS
     log_payload = {
         "event": "predict_batch",
         "batch_size": n,
@@ -171,8 +162,4 @@ async def predict_batch(
     else:
         _log.info(json.dumps(log_payload))
 
-    return BatchPredictionResponse(
-        predictions=predictions,
-        total=len(predictions),
-        latency_ms=total_ms,
-    )
+    return BatchPredictionResponse(predictions=predictions, total=len(predictions), latency_ms=total_ms)

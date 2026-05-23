@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import uuid
 
@@ -20,11 +18,7 @@ class PredictionStore:
         self._deployment_id = deployment_id
 
     async def save(
-        self,
-        transaction_id: str,
-        prediction_score: float,
-        prediction_label: bool,
-        latency_ms: float,
+        self, transaction_id: str, prediction_score: float, prediction_label: bool, latency_ms: float
     ) -> None:
         try:
             async with self._pool.acquire() as conn:
@@ -37,6 +31,4 @@ class PredictionStore:
                     latency_ms,
                 )
         except Exception:
-            _log.error(
-                "Error persisting prediction for transaction %s", transaction_id, exc_info=True
-            )
+            _log.error("Error persisting prediction for transaction %s", transaction_id, exc_info=True)

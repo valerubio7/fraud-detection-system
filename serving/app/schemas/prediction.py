@@ -33,25 +33,19 @@ class TransactionRequest(BaseModel):
         }
     )
 
-    transaction_id: str = Field(description="Identificador único de la transacción.")
-    user_id: str = Field(description="Identificador del usuario que realiza la transacción.")
-    merchant_id: str = Field(description="Identificador del comercio.")
-    merchant_category: str = Field(
-        description="Categoría del comercio (ej: grocery, electronics, travel)."
-    )
-    amount: float = Field(
-        gt=0, description="Monto de la transacción en moneda local. Debe ser mayor que 0."
-    )
-    country: str = Field(
-        description="Código ISO 3166-1 alpha-2 del país de la transacción (ej: AR, BR, MX)."
-    )
-    timestamp: datetime = Field(description="Timestamp de la transacción en formato ISO 8601.")
-    device_type: str = Field(description="Tipo de dispositivo: mobile, desktop, o tablet.")
-    ip_hash: str = Field(description="Hash del IP de origen (no se almacena el IP real).")
+    transaction_id: str = Field(description="Unique transaction identifier.")
+    user_id: str = Field(description="Identifier of the user making the transaction.")
+    merchant_id: str = Field(description="Merchant identifier.")
+    merchant_category: str = Field(description="Merchant category (e.g.: grocery, electronics, travel).")
+    amount: float = Field(gt=0, description="Transaction amount in local currency. Must be greater than 0.")
+    country: str = Field(description="ISO 3166-1 alpha-2 country code for the transaction (e.g.: AR, BR, MX).")
+    timestamp: datetime = Field(description="Transaction timestamp in ISO 8601 format.")
+    device_type: str = Field(description="Device type: mobile, desktop, or tablet.")
+    ip_hash: str = Field(description="Hash of the source IP (the real IP is not stored).")
     features: dict[str, float] = Field(
         description=(
-            "Features pre-calculadas por el pipeline de feature engineering online. "
-            "Debe contener exactamente las 11 keys: "
+            "Features pre-computed by the online feature engineering pipeline. "
+            "Must contain exactly 11 keys: "
             "`tx_count_1h`, `tx_count_24h`, `tx_count_7d`, "
             "`amount_sum_1h`, `amount_sum_24h`, `seconds_since_last_tx`, "
             "`amount_ratio_vs_user_avg`, `is_country_new`, `distinct_countries_seen`, "
@@ -73,28 +67,20 @@ class PredictionResponse(BaseModel):
         }
     )
 
-    transaction_id: str = Field(description="Identificador de la transacción evaluada.")
-    prediction_score: float = Field(description="Probabilidad de fraude entre 0.0 y 1.0.")
-    prediction_label: bool = Field(
-        description="True si `prediction_score` >= `fraud_score_threshold` (por defecto 0.5)."
-    )
-    model_version: str = Field(description="Versión del modelo XGBoost usado para esta predicción.")
-    latency_ms: float = Field(
-        description="Latencia de inferencia en milisegundos (feature prep + XGBoost)."
-    )
+    transaction_id: str = Field(description="Identifier of the evaluated transaction.")
+    prediction_score: float = Field(description="Fraud probability between 0.0 and 1.0.")
+    prediction_label: bool = Field(description="True if `prediction_score` >= `fraud_score_threshold` (default 0.5).")
+    model_version: str = Field(description="XGBoost model version used for this prediction.")
+    latency_ms: float = Field(description="Inference latency in milliseconds (feature prep + XGBoost).")
 
 
 class BatchPredictionRequest(BaseModel):
     items: list[TransactionRequest] = Field(
-        min_length=1,
-        max_length=500,
-        description="Lista de transacciones a evaluar. Mínimo 1, máximo 500.",
+        min_length=1, max_length=500, description="List of transactions to evaluate. Minimum 1, maximum 500."
     )
 
 
 class BatchPredictionResponse(BaseModel):
-    predictions: list[PredictionResponse] = Field(
-        description="Lista de predicciones en el mismo orden que `items`."
-    )
-    total: int = Field(description="Cantidad total de predicciones devueltas.")
-    latency_ms: float = Field(description="Latencia total del batch en milisegundos.")
+    predictions: list[PredictionResponse] = Field(description="List of predictions in the same order as `items`.")
+    total: int = Field(description="Total number of predictions returned.")
+    latency_ms: float = Field(description="Total batch latency in milliseconds.")

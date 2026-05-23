@@ -8,11 +8,11 @@ import asyncpg
 from fastapi import FastAPI, Request
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from .routes.health import router as health_router
-from .routes.predict import router as predict_router
-from .services.model_loader import ModelLoader
-from .services.prediction_cache import PredictionCache
-from .services.prediction_store import PredictionStore
+from serving.app.routes.health import router as health_router
+from serving.app.routes.predict import router as predict_router
+from serving.app.services.model_loader import ModelLoader
+from serving.app.services.prediction_cache import PredictionCache
+from serving.app.services.prediction_store import PredictionStore
 
 _log = logging.getLogger(__name__)
 
@@ -34,16 +34,11 @@ async def lifespan(app: FastAPI):
     _pg_db = os.getenv("POSTGRES_DB", "fraud_metadata")
     dsn = f"postgresql://{_pg_user}:{_pg_password}@{_pg_host}:{_pg_port}/{_pg_db}"
     app.state.pg_pool = await asyncpg.create_pool(
-        dsn=dsn,
-        min_size=int(os.getenv("PG_POOL_MIN_SIZE", "2")),
-        max_size=int(os.getenv("PG_POOL_MAX_SIZE", "10")),
+        dsn=dsn, min_size=int(os.getenv("PG_POOL_MIN_SIZE", "2")), max_size=int(os.getenv("PG_POOL_MAX_SIZE", "10"))
     )
     app.state.prediction_store = PredictionStore(app.state.pg_pool, loader.deployment_id)
 
-    app.state.prediction_cache = PredictionCache(
-        os.getenv("REDIS_HOST", "redis"),
-        int(os.getenv("REDIS_PORT", "6379")),
-    )
+    app.state.prediction_cache = PredictionCache(os.getenv("REDIS_HOST", "redis"), int(os.getenv("REDIS_PORT", "6379")))
     yield
 
     await app.state.pg_pool.close()
@@ -53,24 +48,18 @@ app = FastAPI(
     title="Fraud Detection Serving API",
     version="0.1.0",
     description=(
-        "API de inferencia de fraude en tiempo real. "
-        "Clasifica transacciones bancarias como fraudulentas o legítimas "
-        "usando un modelo XGBoost con latencia P99 < 100ms bajo carga.\n\n"
-        "**Modelo**: cargado desde MLflow Registry (stage: Production) al startup. "
-        "Si no hay modelo en Production, la API inicia en modo degradado "
-        "y `/health` devuelve `status: degraded`.\n\n"
-        "**Idempotencia**: el mismo `transaction_id` devuelve siempre el mismo resultado "
-        "(cacheado en Redis por 5 minutos)."
+        "Real-time fraud inference API. "
+        "Classifies bank transactions as fraudulent or legitimate "
+        "using an XGBoost model with P99 latency < 100ms under load.\n\n"
+        "**Model**: loaded from MLflow Registry (stage: Production) at startup. "
+        "If no model is found in Production, the API starts in degraded mode "
+        "and `/health` returns `status: degraded`.\n\n"
+        "**Idempotency**: the same `transaction_id` always returns the same result "
+        "(cached in Redis for 5 minutes)."
     ),
     openapi_tags=[
-        {
-            "name": "health",
-            "description": "Estado del servicio y del modelo cargado en memoria.",
-        },
-        {
-            "name": "predictions",
-            "description": "Inferencia de fraude para transacciones individuales y en batch.",
-        },
+        {"name": "health", "description": "Service and loaded model health status."},
+        {"name": "predictions", "description": "Fraud inference for individual and batch transactions."},
     ],
     docs_url="/docs",
     redoc_url="/redoc",

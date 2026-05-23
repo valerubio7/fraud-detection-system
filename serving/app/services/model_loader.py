@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -30,8 +28,7 @@ class ModelLoader:
         client = MlflowClient(tracking_uri=os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
 
         versions = client.get_latest_versions(
-            os.getenv("MODEL_NAME", "FraudDetectionModel"),
-            stages=[os.getenv("MODEL_STAGE", "Production")],
+            os.getenv("MODEL_NAME", "FraudDetectionModel"), stages=[os.getenv("MODEL_STAGE", "Production")]
         )
         if not versions:
             raise RuntimeError(
@@ -59,9 +56,7 @@ class ModelLoader:
         )
         try:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id FROM public.model_deployments WHERE is_active = TRUE LIMIT 1"
-                )
+                cur.execute("SELECT id FROM public.model_deployments WHERE is_active = TRUE LIMIT 1")
                 row = cur.fetchone()
         finally:
             conn.close()
