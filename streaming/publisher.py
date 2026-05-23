@@ -1,5 +1,3 @@
-"""Shared Avro Kafka producer base."""
-
 from __future__ import annotations
 
 import io
@@ -14,9 +12,7 @@ from fastavro import parse_schema, schemaless_writer
 logger = logging.getLogger(__name__)
 
 
-class AvroKafkaProducer:
-    """Base class for Avro-serialized Kafka producers."""
-
+class AvroPublisher:
     def __init__(
         self,
         broker_url: str,
@@ -42,7 +38,7 @@ class AvroKafkaProducer:
                 "client.id": client_id,
             }
         )
-        logger.info("Initialized Kafka producer for topic %s with broker %s", topic, broker_url)
+        logger.info("Initialized Kafka publisher for topic %s with broker %s", topic, broker_url)
 
     @staticmethod
     def _load_schema(schema_path: Path) -> dict[str, Any]:
@@ -62,7 +58,7 @@ class AvroKafkaProducer:
         schemaless_writer(buffer, self._avro_schema, data)
         return buffer.getvalue()
 
-    def _produce(self, key: str, payload: bytes) -> None:
+    def _publish(self, key: str, payload: bytes) -> None:
         try:
             self._producer.produce(
                 self._topic,
@@ -72,10 +68,10 @@ class AvroKafkaProducer:
             )
             self._producer.poll(0.0)
         except KafkaException as exc:
-            logger.error("Failed to produce message %s: %s", key, exc)
+            logger.error("Failed to publish message %s: %s", key, exc)
             raise
         except BufferError as exc:
-            logger.error("Producer queue full for message %s: %s", key, exc)
+            logger.error("Publisher queue full for message %s: %s", key, exc)
             raise
 
     def flush(self) -> None:
@@ -88,7 +84,7 @@ class AvroKafkaProducer:
             logger.warning("Flush completed with %s messages remaining", remaining)
 
     def close(self) -> None:
-        logger.info("Closing Kafka producer for topic %s", self._topic)
+        logger.info("Closing Kafka publisher for topic %s", self._topic)
         self.flush()
 
     def _delivery_callback(self, error: Exception | None, message: Any, key: str) -> None:
@@ -104,4 +100,4 @@ class AvroKafkaProducer:
         )
 
 
-__all__ = ["AvroKafkaProducer"]
+__all__ = ["AvroPublisher"]

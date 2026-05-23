@@ -24,13 +24,13 @@ jobs:
             dockerfile: docker/fastapi/Dockerfile
             image: fraud-detection-fastapi
           - name: consumer
-            dockerfile: docker/consumer/Dockerfile
+            dockerfile: docker/streaming/Dockerfile
             image: fraud-detection-consumer
           - name: inference
-            dockerfile: docker/inference_consumer/Dockerfile
+            dockerfile: docker/streaming/Dockerfile
             image: fraud-detection-inference
           - name: producer
-            dockerfile: docker/kafka/Dockerfile
+            dockerfile: docker/streaming/Dockerfile
             image: fraud-detection-producer
           - name: airflow
             dockerfile: docker/airflow/Dockerfile

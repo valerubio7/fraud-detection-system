@@ -18,9 +18,9 @@ services:
       LOG_LEVEL: debug
 
   producer:
-    # Bind-mount ingestion code to iterate on the simulator without rebuilds.
+    # Bind-mount streaming code to iterate on the simulator without rebuilds.
     volumes:
-      - ./ingestion:/app/ingestion
+      - ./streaming:/app/streaming
     environment:
       # Slow down event generation to keep local runs observable and stable.
       PRODUCER_TPS: "10"

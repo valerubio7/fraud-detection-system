@@ -7,7 +7,7 @@ from collections import Counter
 import psycopg2
 from psycopg2.extras import execute_values
 
-from ingestion.producer.generator import FraudPatternGenerator, LegitimateTransactionGenerator
+from streaming.producer.generator import FraudPatternGenerator, LegitimateTransactionGenerator
 
 FRAUD_PATTERNS = ["amount_anomaly", "unusual_country", "high_frequency", "unknown_merchant"]
 

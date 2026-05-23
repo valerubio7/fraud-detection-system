@@ -19,7 +19,7 @@ serving = [
   "redis>=5.0.0,<6.0.0",
   "scikit-learn>=1.4.0,<2.0.0",
   "uvicorn[standard]>=0.35.0,<1.0.0",
-  "xgboost==2.0.3",
+  "xgboost>=2.1.0,<3.0.0",
 ]
 producer = [
   "confluent-kafka>=2.11.0,<3.0.0",
@@ -61,7 +61,7 @@ model = [
   "optuna>=3.0.0,<4.0.0",
   "psycopg2-binary>=2.9.0,<3.0.0",
   "pydantic-settings>=2.0.0,<3.0.0",
-  "xgboost==2.0.3",
+  "xgboost>=2.1.0,<3.0.0",
 ]
 testing = [
   "pytest>=8.0.0,<9.0.0",
@@ -88,7 +88,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["serving", "ingestion", "model", "feature_engineering", "mlops"]
+source = ["serving", "streaming", "model", "feature_engineering", "mlops"]
 omit = ["*/tests/*", "*/migrations/*", "*/__pycache__/*"]
 
 [tool.coverage.report]

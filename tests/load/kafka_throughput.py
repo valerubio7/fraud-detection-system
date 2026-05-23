@@ -19,15 +19,15 @@ from confluent_kafka import Consumer, TopicPartition
 from confluent_kafka.admin import AdminClient, NewTopic
 from testcontainers.kafka import KafkaContainer
 
-from ingestion.consumer.feature_publisher import FeaturePublisher
-from ingestion.consumer.historical_store import HistoricalProfileStore
-from ingestion.consumer.kafka_consumer import TransactionConsumer
-from ingestion.consumer.window_store import SlidingWindowStore
-from ingestion.models import Transaction
-from ingestion.producer.kafka_producer import TransactionProducer
+from streaming.features.feature_publisher import FeaturePublisher
+from streaming.features.historical_profile_store import HistoricalProfileStore
+from streaming.features.sliding_window_store import SlidingWindowStore
+from streaming.features.transaction_consumer import TransactionConsumer
+from streaming.models import Transaction
+from streaming.producer.transaction_producer import TransactionProducer
 
-RAW_SCHEMA_PATH = "ingestion/schemas/transaction_raw.avsc"
-FEATURES_SCHEMA_PATH = "ingestion/schemas/transaction_features.avsc"
+RAW_SCHEMA_PATH = "streaming/schemas/transaction_raw.avsc"
+FEATURES_SCHEMA_PATH = "streaming/schemas/transaction_features.avsc"
 
 TARGET_MESSAGES = 10_000
 TARGET_RATE_MSG_PER_SEC = 167  # 10,000 / 60s
@@ -87,12 +87,9 @@ class TestKafkaProducerThroughput:
 
         producer.close()
 
-        assert elapsed < PRODUCE_TIMEOUT_S, (
-            f"Producer demoró {elapsed:.1f}s > {PRODUCE_TIMEOUT_S}s límite"
-        )
+        assert elapsed < PRODUCE_TIMEOUT_S, f"Producer demoró {elapsed:.1f}s > {PRODUCE_TIMEOUT_S}s límite"
         assert actual_rate >= TARGET_RATE_MSG_PER_SEC, (
-            f"Throughput del producer {actual_rate:.0f} msg/s < objetivo"
-            f" {TARGET_RATE_MSG_PER_SEC} msg/s"
+            f"Throughput del producer {actual_rate:.0f} msg/s < objetivo {TARGET_RATE_MSG_PER_SEC} msg/s"
         )
 
 
@@ -156,8 +153,7 @@ class TestFeatureEngineeringThroughput:
             f"Solo se procesaron {processed}/{TARGET_MESSAGES} mensajes en {elapsed:.1f}s"
         )
         assert actual_rate >= TARGET_RATE_MSG_PER_SEC, (
-            f"Throughput de feature engineering {actual_rate:.0f} msg/s <"
-            f" objetivo {TARGET_RATE_MSG_PER_SEC} msg/s"
+            f"Throughput de feature engineering {actual_rate:.0f} msg/s < objetivo {TARGET_RATE_MSG_PER_SEC} msg/s"
         )
 
     def test_consumer_lag_after_processing(self, kafka_broker):
@@ -174,10 +170,7 @@ class TestFeatureEngineeringThroughput:
             }
         )
         metadata = admin_consumer.list_topics("transactions.raw", timeout=10)
-        partitions = [
-            TopicPartition("transactions.raw", p)
-            for p in metadata.topics["transactions.raw"].partitions
-        ]
+        partitions = [TopicPartition("transactions.raw", p) for p in metadata.topics["transactions.raw"].partitions]
         end_offsets = admin_consumer.get_watermark_offsets(partitions[0], timeout=5)
         print(f"\nEnd offset partition 0: {end_offsets}")
         admin_consumer.close()

@@ -144,7 +144,10 @@ services:
   producer:
     build:
       context: .
-      dockerfile: docker/kafka/Dockerfile
+      dockerfile: docker/streaming/Dockerfile
+      args:
+        SERVICE_GROUP: producer
+        SERVICE_CMD: streaming.producer.main
     restart: on-failure
     depends_on:
       kafka:
@@ -157,7 +160,10 @@ services:
   consumer:
     build:
       context: .
-      dockerfile: docker/consumer/Dockerfile
+      dockerfile: docker/streaming/Dockerfile
+      args:
+        SERVICE_GROUP: consumer
+        SERVICE_CMD: streaming.features.main
     restart: unless-stopped
     depends_on:
       kafka:
@@ -174,7 +180,7 @@ services:
       TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD}
       TIMESCALE_DB: ${TIMESCALE_DB}
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'ingestion.consumer.main' || exit 1"]
+      test: ["CMD-SHELL", "pgrep -f 'streaming.features.main' || exit 1"]
       interval: 30s
       timeout: 5s
       start_period: 15s
@@ -182,10 +188,13 @@ services:
     networks:
       - mlops-net
 
-  inference_consumer:
+  inference:
     build:
       context: .
-      dockerfile: docker/inference_consumer/Dockerfile
+      dockerfile: docker/streaming/Dockerfile
+      args:
+        SERVICE_GROUP: inference
+        SERVICE_CMD: streaming.inference.main
     restart: unless-stopped
     depends_on:
       kafka:
@@ -202,7 +211,7 @@ services:
       INFERENCE_COOLDOWN_SECONDS: 30
       INFERENCE_RATE_LIMIT_MS: 0
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'ingestion.inference_consumer.main' || exit 1"]
+      test: ["CMD-SHELL", "pgrep -f 'streaming.inference.main' || exit 1"]
       interval: 30s
       timeout: 5s
       start_period: 15s

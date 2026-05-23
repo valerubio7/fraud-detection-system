@@ -12,7 +12,7 @@ from typing import Any
 from confluent_kafka import Consumer, KafkaException, Message
 from fastavro import parse_schema, schemaless_reader
 
-from ingestion.models import Transaction
+from streaming.models import Transaction
 
 logger = logging.getLogger(__name__)
 

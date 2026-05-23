@@ -14,9 +14,9 @@ from airflow.models.xcom_arg import XComArg
 
 sys.path.insert(0, "/opt/airflow/project")
 
-from fraud_operators import EvidentlyReportOperator, TimescaleExtractOperator
+from operators import EvidentlyReportOperator, TimescaleExtractOperator
 
-from mlops.evidently.reference import load_reference_dataset
+from mlops.evidently.reference_data import load_reference_dataset
 from model.selected_features import SELECTED_FEATURES
 
 DAG_ID = "drift_detection_report"
@@ -116,9 +116,7 @@ def drift_detection_report() -> None:
         df = pd.read_parquet(raw_path).reset_index(drop=True)
 
         if len(df) < MIN_PRODUCTION_ROWS:
-            raise AirflowSkipException(
-                f"Insufficient production data for drift analysis (<{MIN_PRODUCTION_ROWS} rows)"
-            )
+            raise AirflowSkipException(f"Insufficient production data for drift analysis (<{MIN_PRODUCTION_ROWS} rows)")
 
         X = featurizer.transform(df)
         X[SELECTED_FEATURES].to_parquet(PRODUCTION_PARQUET, index=False)
@@ -148,8 +146,7 @@ def drift_detection_report() -> None:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT f1_score, precision, recall"
-                    " FROM public.model_deployments WHERE id = %s",
+                    "SELECT f1_score, precision, recall FROM public.model_deployments WHERE id = %s",
                     (deployment["deployment_id"],),
                 )
                 row = cur.fetchone()
@@ -176,7 +173,7 @@ def drift_detection_report() -> None:
         from mlflow.tracking import MlflowClient
 
         from mlops.evidently.data_drift import run_data_drift_report_with_html
-        from mlops.evidently.html_exporter import upload_report_to_mlflow
+        from mlops.evidently.report_uploader import upload_report_to_mlflow
         from model.selected_features import SELECTED_FEATURES
 
         ref_df = pd.read_parquet(REFERENCE_PARQUET)
@@ -195,8 +192,8 @@ def drift_detection_report() -> None:
 
     @task
     def save_report_to_postgresql(deployment: dict, data_drift: dict, model_drift: dict) -> int:
+        from mlops.evidently.drift_policy import evaluate_drift_action, trigger_retrain_dag
         from mlops.evidently.drift_store import DriftReportStore
-        from mlops.evidently.thresholds import evaluate_drift_action, trigger_retrain_dag
 
         action = evaluate_drift_action(data_drift, model_drift)
         store = DriftReportStore()

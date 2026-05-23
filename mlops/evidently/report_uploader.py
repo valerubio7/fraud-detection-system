@@ -17,9 +17,7 @@ def upload_report_to_mlflow(
     try:
         from mlflow.tracking import MlflowClient
 
-        MlflowClient(tracking_uri=tracking_uri).log_artifact(
-            run_id, html_path, artifact_path=artifact_subfolder
-        )
+        MlflowClient(tracking_uri=tracking_uri).log_artifact(run_id, html_path, artifact_path=artifact_subfolder)
         return f"runs:/{run_id}/{artifact_subfolder}/{os.path.basename(html_path)}"
     except Exception:
         logger.warning(

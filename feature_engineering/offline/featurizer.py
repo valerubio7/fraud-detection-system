@@ -2,7 +2,7 @@
 Offline batch featurizer for fraud detection model training.
 
 Replicates the features produced by the online pipeline
-(ingestion/consumer/window_store.py and ingestion/consumer/historical_store.py)
+(streaming/features/sliding_window_store.py and streaming/features/historical_profile_store.py)
 in a batch, point-in-time correct manner.
 """
 
@@ -17,7 +17,7 @@ import pandas as pd
 from feature_engineering.offline.encoders import CategoricalEncoderPipeline
 
 if TYPE_CHECKING:
-    from feature_engineering.offline.selection import FeatureSelectionReport
+    from feature_engineering.offline.feature_selection import FeatureSelectionReport
 
 _ONE_HOUR_NS = np.int64(3_600 * 1_000_000_000)
 _TWENTY_FOUR_HOURS_NS = np.int64(86_400 * 1_000_000_000)
@@ -343,9 +343,7 @@ class TransactionFeaturizer:
                 h_cn_dist[lo:hi],
                 h_mer_new[lo:hi],
                 h_mer_dist[lo:hi],
-            ) = _historical_features_for_user(
-                times_ns[lo:hi], amounts[lo:hi], countries[lo:hi], merchants[lo:hi]
-            )
+            ) = _historical_features_for_user(times_ns[lo:hi], amounts[lo:hi], countries[lo:hi], merchants[lo:hi])
 
         # Build result in sorted order, then restore original row order
         out_sorted = pd.DataFrame(
@@ -353,9 +351,7 @@ class TransactionFeaturizer:
                 "log_amount": log_amount,
                 "hour_of_day": hour_of_day,
                 "day_of_week": day_of_week,
-                "merchant_category_encoded": cat_result["merchant_category_encoded"].to_numpy(
-                    dtype=np.float64
-                ),
+                "merchant_category_encoded": cat_result["merchant_category_encoded"].to_numpy(dtype=np.float64),
                 "country_encoded": cat_result["country_encoded"].to_numpy(dtype=np.float64),
                 "device_type_encoded": cat_result["device_type_encoded"].to_numpy(dtype=np.float64),
                 "tx_count_1h": w_tx_1h,

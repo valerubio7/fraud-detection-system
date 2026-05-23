@@ -121,7 +121,7 @@ def seed_timescaledb(conn_params: dict, df: pd.DataFrame) -> None:
 
 def _make_selection_report(X_full: pd.DataFrame, selected_features: list[str]):
     """Build a FeatureSelectionReport that selects exactly the given features."""
-    from feature_engineering.offline.selection import FeatureSelectionReport
+    from feature_engineering.offline.feature_selection import FeatureSelectionReport
 
     all_features = X_full.columns.tolist()
     dropped = [f for f in all_features if f not in selected_features]
@@ -130,9 +130,7 @@ def _make_selection_report(X_full: pd.DataFrame, selected_features: list[str]):
         selected_features=selected_features,
         dropped_features=dropped,
         drop_reason={f: "redundant" for f in dropped},
-        importance_df=pd.DataFrame(
-            {"feature": all_features, "importance": [0.1] * len(all_features)}
-        ),
+        importance_df=pd.DataFrame({"feature": all_features, "importance": [0.1] * len(all_features)}),
         redundant_pairs=[],
     )
 
@@ -240,7 +238,7 @@ class TestTrainingPipelineIntegration:
 
     def test_full_training_registers_model_in_mlflow(self):
         """El pipeline completo registra el modelo en MLflow."""
-        from feature_engineering.offline.imbalance import compute_scale_pos_weight
+        from feature_engineering.offline.class_imbalance import compute_scale_pos_weight
         from model.selected_features import SELECTED_FEATURES
         from model.train import build_features, load_transactions, temporal_split, train_model
 
@@ -258,6 +256,8 @@ class TestTrainingPipelineIntegration:
                 X_train, X_val, X_test, y_train, y_val, y_test = temporal_split(X, y)
                 spw = compute_scale_pos_weight(y_train)
                 model = train_model(X_train, y_train, X_val, y_val, spw, seed=42, params={})
+                if not hasattr(model, "_estimator_type"):
+                    model._estimator_type = "classifier"
                 mlflow.xgboost.log_model(
                     model,
                     artifact_path="model",

@@ -221,9 +221,7 @@ class TestEvaluateDriftAction:
     def _data(drift_score: float, feature_scores: dict[str, float] | None = None) -> dict:
         return {
             "drift_score": drift_score,
-            "feature_drifts": {
-                name: {"drift_score": score} for name, score in (feature_scores or {}).items()
-            },
+            "feature_drifts": {name: {"drift_score": score} for name, score in (feature_scores or {}).items()},
         }
 
     @staticmethod
@@ -232,7 +230,7 @@ class TestEvaluateDriftAction:
 
     def test_critical_when_critical_feature_and_model_drift(self):
         """CRITICAL: feature crítica con drift > 0.20 Y model drift simultáneo."""
-        from mlops.evidently.thresholds import evaluate_drift_action
+        from mlops.evidently.drift_policy import evaluate_drift_action
 
         action = evaluate_drift_action(
             self._data(0.5, {"tx_count_1h": 0.9}),
@@ -246,7 +244,7 @@ class TestEvaluateDriftAction:
 
     def test_high_when_only_critical_feature_drifted(self):
         """HIGH: feature crítica con drift > 0.20 pero sin model drift."""
-        from mlops.evidently.thresholds import evaluate_drift_action
+        from mlops.evidently.drift_policy import evaluate_drift_action
 
         action = evaluate_drift_action(
             self._data(0.4, {"amount_sum_1h": 0.75}),
@@ -259,7 +257,7 @@ class TestEvaluateDriftAction:
 
     def test_high_when_only_model_drift(self):
         """HIGH: model drift detectado pero sin features críticas con score > 0.20."""
-        from mlops.evidently.thresholds import evaluate_drift_action
+        from mlops.evidently.drift_policy import evaluate_drift_action
 
         action = evaluate_drift_action(
             self._data(0.1, {"non_critical": 0.9}),
@@ -272,7 +270,7 @@ class TestEvaluateDriftAction:
 
     def test_warning_when_global_score_above_threshold(self):
         """WARNING: drift_score > 0.30 sin features críticas ni model drift."""
-        from mlops.evidently.thresholds import evaluate_drift_action
+        from mlops.evidently.drift_policy import evaluate_drift_action
 
         action = evaluate_drift_action(
             self._data(0.45, {"non_critical": 0.05}),
@@ -286,7 +284,7 @@ class TestEvaluateDriftAction:
 
     def test_info_when_within_acceptable_bounds(self):
         """INFO: drift_score bajo y features críticas por debajo del umbral."""
-        from mlops.evidently.thresholds import evaluate_drift_action
+        from mlops.evidently.drift_policy import evaluate_drift_action
 
         action = evaluate_drift_action(
             self._data(0.05, {"tx_count_1h": 0.05}),

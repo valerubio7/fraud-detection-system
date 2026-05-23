@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections import deque
 from datetime import datetime
 
-from ingestion.models import Transaction
+from streaming.models import Transaction
 
-from .features import WindowFeatures
+from .feature_types import WindowFeatures
 
 ONE_HOUR_SECONDS = 3600
 TWENTY_FOUR_HOURS_SECONDS = 24 * ONE_HOUR_SECONDS
@@ -96,11 +96,7 @@ class SlidingWindowStore:
         """Populate the window from a persisted list, discarding stale entries."""
         cutoff = reference_time.timestamp() - max_window_seconds
         valid = sorted(
-            (
-                t
-                for t in transactions
-                if cutoff <= t.timestamp.timestamp() <= reference_time.timestamp()
-            ),
+            (t for t in transactions if cutoff <= t.timestamp.timestamp() <= reference_time.timestamp()),
             key=lambda t: t.timestamp,
         )
         for transaction in valid:

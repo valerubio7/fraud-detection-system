@@ -6,8 +6,7 @@ Calcula las features que alimentan al modelo de detección de fraude. Tiene dos 
 
 ```
 feature_engineering/
-├── offline/       # Implementado — replica en batch la lógica de streaming
-└── online/        # Vacío — contendrá la versión en tiempo real (Redis + ventanas en memoria)
+└── offline/       # Implementado — replica en batch la lógica de streaming
 ```
 
 ## Offline (`offline/`)
@@ -57,7 +56,7 @@ X_encoded = pipeline.transform(X_train)
 pipeline.save("encoders.joblib")
 ```
 
-### `selection.py` — Feature selection
+### `feature_selection.py` — Feature selection
 
 Reduce las 18 features eliminando las de baja importancia o redundantes:
 
@@ -69,14 +68,14 @@ Reduce las 18 features eliminando las de baja importancia o redundantes:
 | `select_features(X, y, ...)` | Orquestador: importancia → eliminar baja → eliminar redundante → Boruta |
 
 ```python
-from feature_engineering.offline.selection import select_features
+from feature_engineering.offline.feature_selection import select_features
 
 report = select_features(X_train, y_train)
 print(report.selected_features)      # features que se quedan
 print(report.drop_reason)            # por qué se descartó cada una
 ```
 
-### `imbalance.py` — Manejo de desbalance
+### `class_imbalance.py` — Manejo de desbalance
 
 Compara dos estrategias para el desbalance ~49:1 típico en fraude:
 
@@ -84,15 +83,11 @@ Compara dos estrategias para el desbalance ~49:1 típico en fraude:
 - **scale_pos_weight** — weighting interno de XGBoost
 
 ```python
-from feature_engineering.offline.imbalance import run_imbalance_analysis
+from feature_engineering.offline.class_imbalance import run_imbalance_analysis
 
 report = run_imbalance_analysis(X_train, y_train, X_val, y_val)
 print(report.recommended_strategy)   # la que mejor F1 obtuvo
 ```
-
-## Online (`online/`)
-
-Directorio para la implementación en streaming. En producción, el `ingestion.consumer` ya computa features online (window + historical stores), pero esta carpeta contendrá la lógica equivalente como módulo reutilizable cuando se extraiga del consumer.
 
 ## Flujo de uso en entrenamiento
 

@@ -1,4 +1,4 @@
-"""TimescaleDB writer for processed transactions."""
+"""TimescaleDB store for processed transactions."""
 
 from __future__ import annotations
 
@@ -9,14 +9,14 @@ import psycopg2
 import psycopg2.extras
 from psycopg2.pool import ThreadedConnectionPool
 
-from ingestion.models import Transaction
+from streaming.models import Transaction
 
 psycopg2.extras.register_uuid()
 
 logger = logging.getLogger(__name__)
 
 
-class TimescaleWriter:
+class TransactionStore:
     """Insert processed transactions into TimescaleDB."""
 
     def __init__(
@@ -134,4 +134,4 @@ class TimescaleWriter:
             logger.error("Failed to close TimescaleDB pool: %s", exc)
 
 
-__all__ = ["TimescaleWriter"]
+__all__ = ["TransactionStore"]

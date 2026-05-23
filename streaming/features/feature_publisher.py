@@ -4,13 +4,13 @@ from dataclasses import asdict
 from datetime import UTC
 from typing import Any
 
-from ingestion.avro_producer import AvroKafkaProducer
-from ingestion.models import Transaction
+from streaming.models import Transaction
+from streaming.publisher import AvroPublisher
 
-from .features import HistoricalFeatures, WindowFeatures
+from .feature_types import HistoricalFeatures, WindowFeatures
 
 
-class FeaturePublisher(AvroKafkaProducer):
+class FeaturePublisher(AvroPublisher):
     """Publish enriched transaction features to Kafka using Avro serialization."""
 
     def __init__(
@@ -40,7 +40,7 @@ class FeaturePublisher(AvroKafkaProducer):
     ) -> None:
         """Publish a transaction enriched with calculated features."""
         payload = self._build_payload(transaction, window_features, historical_features)
-        self._produce(transaction.transaction_id, self._serialize_avro(payload))
+        self._publish(transaction.transaction_id, self._serialize_avro(payload))
 
     @staticmethod
     def _flatten_features(

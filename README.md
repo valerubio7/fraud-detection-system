@@ -53,7 +53,7 @@ cd fraud-detection-system
 ./scripts/smoke_test.sh
 
 # 4. Iniciar el simulador de transacciones
-uv run python -m ingestion.producer.main --mode live --tps 10 --fraud-rate 0.02
+uv run python -m streaming.producer.main --mode live --tps 10 --fraud-rate 0.02
 
 # 5. Abrir los dashboards
 open http://localhost:3000   # Grafana (admin/admin por defecto)
@@ -78,8 +78,8 @@ open http://localhost:3000   # Grafana (admin/admin por defecto)
 ### Pipeline en tiempo real (< 100ms por transacción)
 
 1. **Producer** genera transacciones sintéticas (modos: `live`, `scenario`, `replay`) y publica en `transactions.raw`.
-2. **Consumer** (feature engineering online): consume `transactions.raw`, calcula features en ventanas deslizantes (1h/24h/7d) usando `SlidingWindowStore` y `HistoricalProfileStore`, publica en `transactions.features`, y escribe en TimescaleDB.
-3. **Inference Consumer**: consume `transactions.features`, llama a FastAPI `/predict`, publica el resultado en `transactions.predictions` y alertas en `transactions.fraud.alerts`.
+2. **Features** (feature engineering online): consume `transactions.raw`, calcula features en ventanas deslizantes (1h/24h/7d) usando `SlidingWindowStore` y `HistoricalProfileStore`, publica en `transactions.features`, y escribe en TimescaleDB.
+3. **Inference**: consume `transactions.features`, llama a FastAPI `/predict`, publica el resultado en `transactions.predictions` y alertas en `transactions.fraud.alerts`.
 4. **FastAPI**: recibe `TransactionRequest`, aplica el feature pipeline, infiere con XGBoost, y guarda la predicción en PostgreSQL de forma asíncrona.
 
 ### Pipeline MLOps (batch / scheduled)
@@ -104,10 +104,10 @@ open http://localhost:3000   # Grafana (admin/admin por defecto)
 
 ```
 fraud-detection-system/
-├── ingestion/
+├── streaming/
 │   ├── producer/          # Simulador de transacciones (Kafka producer)
-│   ├── consumer/          # Feature engineering online + writer TimescaleDB
-│   ├── inference_consumer/ # Consumer features → FastAPI → predictions
+│   ├── features/          # Feature engineering online + writer TimescaleDB
+│   ├── inference/         # Consumer features → FastAPI → predictions
 │   └── schemas/           # Schemas Avro para los topics Kafka
 ├── feature_engineering/
 │   └── offline/           # Pipeline batch para entrenamiento (featurizer, encoders)
@@ -119,7 +119,7 @@ fraud-detection-system/
 │   └── app/               # FastAPI: routes, schemas, services, model_loader
 ├── mlops/
 │   ├── airflow/dags/      # 4 DAGs de Airflow
-│   └── evidently/         # Drift detection: data_drift, model_drift, thresholds
+│   └── evidently/         # Drift detection: data_drift, model_drift, drift_policy
 ├── database/
 │   ├── timescaledb/       # Migraciones + seeds + hypertable schema
 │   └── postgresql/        # Migraciones + stored procedures + triggers

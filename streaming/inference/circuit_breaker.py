@@ -38,9 +38,7 @@ class CircuitBreaker:
         if self._failure_count >= self.failure_threshold:
             self._state = "OPEN"
             self._opened_at = time.monotonic()
-            logger.warning(
-                "Circuit breaker OPEN after %d consecutive failures", self._failure_count
-            )
+            logger.warning("Circuit breaker OPEN after %d consecutive failures", self._failure_count)
 
     def state(self) -> str:
         return self._state

@@ -60,7 +60,7 @@ Predicción individual.
 }
 ```
 
-El campo `features` contiene las 11 features de ventana y perfil histórico computadas upstream por el `ingestion.consumer`. Verifica cache en Redis por `transaction_id` antes de inferir.
+El campo `features` contiene las 11 features de ventana y perfil histórico computadas upstream por `streaming.features`. Verifica cache en Redis por `transaction_id` antes de inferir.
 
 **Response:**
 
@@ -106,7 +106,7 @@ Carga del modelo en el startup del lifecycle:
 | 2 | `day_of_week` | `raw.timestamp.weekday()` |
 | 3 | `merchant_category_encoded` | Target encoding con fallback a media global |
 | 4 | `country_encoded` | Target encoding con fallback a media global |
-| 5-15 | 11 features de ventana | `window_features` (recibidas del consumer) |
+| 5-15 | 11 features de ventana | `window_features` (recibidas de `streaming.features`) |
 
 Si el modelo no está disponible, el servicio arranca en modo **degraded** (health check lo reporta, predict devuelve 503).
 
@@ -114,7 +114,7 @@ Si el modelo no está disponible, el servicio arranca en modo **degraded** (heal
 
 Persiste asincrónicamente cada predicción en `public.predictions_history` via `asyncpg`. No bloquea la response (fire-and-forget con `background_tasks`).
 
-### `services/cache.py` — `PredictionCache`
+### `services/prediction_cache.py` — `PredictionCache`
 
 Cache en Redis con TTL de 60s. Si Redis no está disponible, degrada gracefulmente (desactiva cache, no falla).
 

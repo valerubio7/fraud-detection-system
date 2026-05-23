@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from ingestion.models import Transaction
+from streaming.models import Transaction
 
 
 def make_transaction(

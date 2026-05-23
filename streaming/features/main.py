@@ -10,11 +10,11 @@ from datetime import datetime
 from pathlib import Path
 
 from .feature_publisher import FeaturePublisher
-from .historical_store import HistoricalProfileStore
-from .kafka_consumer import TransactionConsumer
-from .redis_store import RedisFeatureStore
-from .timescale_writer import TimescaleWriter
-from .window_store import SEVEN_DAYS_SECONDS, SlidingWindowStore
+from .historical_profile_store import HistoricalProfileStore
+from .sliding_window_store import SEVEN_DAYS_SECONDS, SlidingWindowStore
+from .transaction_consumer import TransactionConsumer
+from .transaction_store import TransactionStore
+from .user_store import UserStore
 
 logger = logging.getLogger(__name__)
 
@@ -42,15 +42,15 @@ def hydrate_user_state(
     reference_time: datetime,
     window_store: SlidingWindowStore,
     historical_store: HistoricalProfileStore,
-    redis_store: RedisFeatureStore,
+    user_store: UserStore,
     max_window_seconds: int,
 ) -> None:
     """Load cached state from Redis into in-memory stores."""
-    window_transactions = redis_store.load_user_window(user_id)
+    window_transactions = user_store.load_user_window(user_id)
     if window_transactions:
         window_store.hydrate(window_transactions, reference_time, max_window_seconds)
 
-    historical_profile = redis_store.load_user_historical(user_id)
+    historical_profile = user_store.load_user_historical(user_id)
     if historical_profile:
         historical_store.hydrate(user_id, historical_profile)
 
@@ -67,7 +67,7 @@ def main() -> None:
     )
     window_store = SlidingWindowStore(max_window_seconds=window_max_seconds)
     historical_store = HistoricalProfileStore()
-    redis_store = RedisFeatureStore(
+    user_store = UserStore(
         host=os.getenv("REDIS_HOST", "redis"),
         port=int(os.getenv("REDIS_PORT", "6379")),
     )
@@ -76,7 +76,7 @@ def main() -> None:
         topic=os.getenv("KAFKA_TOPICS_FEATURES", "transactions.features"),
         schema_path=str(schema_path),
     )
-    timescale_writer = TimescaleWriter(
+    transaction_store = TransactionStore(
         host=os.getenv("TIMESCALE_HOST", "timescaledb"),
         port=int(os.getenv("TIMESCALE_PORT", "5432")),
         user=os.getenv("TIMESCALE_USER", "fraud_timeseries_user"),
@@ -94,13 +94,13 @@ def main() -> None:
             if transaction is None:
                 continue
             if transaction.user_id not in initialized_users:
-                if redis_store.is_available:
+                if user_store.is_available:
                     hydrate_user_state(
                         transaction.user_id,
                         transaction.timestamp,
                         window_store,
                         historical_store,
-                        redis_store,
+                        user_store,
                         window_max_seconds,
                     )
                 initialized_users.add(transaction.user_id)
@@ -113,14 +113,14 @@ def main() -> None:
             historical_features = historical_store.compute_features(transaction)
             window_store.add(transaction)
             historical_store.update(transaction)
-            if redis_store.is_available:
-                redis_store.save_user_state(
+            if user_store.is_available:
+                user_store.save_user_state(
                     transaction.user_id,
                     window_store.get_user_window(transaction.user_id),
                     historical_store.to_snapshot(transaction.user_id),
                 )
-            if timescale_writer.is_available:
-                timescale_writer.write(transaction)
+            if transaction_store.is_available:
+                transaction_store.write(transaction)
             try:
                 feature_publisher.publish(transaction, window_features, historical_features)
             except Exception as exc:
@@ -129,9 +129,7 @@ def main() -> None:
                     transaction.transaction_id,
                     exc,
                 )
-            logger.debug(
-                "Computed window features for %s: %s", transaction.transaction_id, window_features
-            )
+            logger.debug("Computed window features for %s: %s", transaction.transaction_id, window_features)
             logger.debug(
                 "Computed historical features for %s: %s",
                 transaction.transaction_id,
@@ -140,8 +138,8 @@ def main() -> None:
             consumer.commit()
     finally:
         feature_publisher.close()
-        timescale_writer.close()
-        redis_store.close()
+        transaction_store.close()
+        user_store.close()
         consumer.close()
 
 

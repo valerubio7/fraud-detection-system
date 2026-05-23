@@ -11,7 +11,7 @@ import time
 from .alert_publisher import AlertPublisher
 from .api_client import InferenceApiClient
 from .circuit_breaker import CircuitBreaker
-from .features_consumer import FeaturesConsumer
+from .feature_consumer import FeatureConsumer
 from .prediction_publisher import PredictionPublisher
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ def _classify_severity(score: float) -> str:
 def main() -> None:
     configure_logging()
 
-    consumer = FeaturesConsumer(
+    consumer = FeatureConsumer(
         broker_url=os.getenv("KAFKA_BROKER_URL", "kafka:29092"),
         topic=os.getenv("KAFKA_TOPICS_FEATURES", "transactions.features"),
     )

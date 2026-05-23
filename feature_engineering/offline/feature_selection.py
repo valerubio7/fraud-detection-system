@@ -21,7 +21,7 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 
-from feature_engineering.offline.imbalance import compute_scale_pos_weight
+from feature_engineering.offline.class_imbalance import compute_scale_pos_weight
 
 logger = logging.getLogger(__name__)
 
@@ -232,9 +232,7 @@ def select_features(
     # Step 1 — XGBoost importances
     logger.info("Computing XGBoost feature importances...")
     importance_df = compute_xgboost_importance(X, y, random_state=random_state)
-    importance_map: dict[str, float] = dict(
-        zip(importance_df["feature"], importance_df["importance"], strict=False)
-    )
+    importance_map: dict[str, float] = dict(zip(importance_df["feature"], importance_df["importance"], strict=False))
 
     drop_reason: dict[str, str] = {}
 

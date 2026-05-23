@@ -13,14 +13,14 @@ mlops/
 │   │   ├── drift_detection_report.py       # Detección de drift cada 6 horas
 │   │   └── data_quality_check.py           # Calidad de datos cada hora
 │   └── plugins/
-│       └── fraud_operators.py              # Operadores Airflow reutilizables
+│       └── operators.py                    # Operadores Airflow reutilizables
 └── evidently/
     ├── data_drift.py       # Análisis de data drift con Evidently DataDriftPreset
     ├── model_drift.py      # Degradación de métricas de producción vs. baseline
     ├── drift_store.py      # Persistencia de reportes en PostgreSQL
-    ├── thresholds.py       # Umbrales de alerta y lógica de severidad
-    ├── reference.py        # Carga del dataset de referencia desde MLflow
-    └── html_exporter.py    # Subida de reportes HTML a MLflow como artefactos
+    ├── drift_policy.py     # Umbrales de alerta y lógica de severidad
+    ├── reference_data.py   # Carga del dataset de referencia desde MLflow
+    └── report_uploader.py  # Subida de reportes HTML a MLflow como artefactos
 ```
 
 ## Ciclo de vida automatizado
@@ -100,7 +100,7 @@ Tres checks en paralelo. Los umbrales son configurables por variable de entorno:
 | `MIN_TRANSACTIONS_PER_HOUR` | `10` |
 | `MIN_PREDICTIONS_PER_HOUR` | `5` |
 
-## Operadores Airflow (`fraud_operators.py`)
+## Operadores Airflow (`operators.py`)
 
 | Operador | Descripción |
 |---|---|
@@ -126,7 +126,7 @@ Compara métricas de producción contra el baseline de entrenamiento:
 - `fetch_labeled_predictions(deployment_id)` extrae predicciones con `actual_label` de los últimos 7 días.
 - `run_model_drift_report(ref_metrics, labeled_df)` calcula F1/precisión/recall actuales y los compara. Drift detectado si `delta_F1 < -0.05`. Requiere mínimo 50 predicciones etiquetadas.
 
-### `thresholds.py`
+### `drift_policy.py`
 
 `evaluate_drift_action(data_drift_result, model_drift_result)` → `DriftAction`:
 
@@ -141,11 +141,11 @@ Compara métricas de producción contra el baseline de entrenamiento:
 
 `DriftReportStore.save()` persiste en `public.drift_reports` con los feature drifts serializados como JSONB (incluye tanto data drift como model drift en un objeto combinado). `save_alert()` inserta en `public.alert_log`.
 
-### `reference.py`
+### `reference_data.py`
 
 `load_reference_dataset(run_id, tracking_uri)` descarga `reference_dataset.parquet` del artefacto MLflow del run de entrenamiento. Garantiza que el drift siempre se calcule contra los datos exactos con los que se entrenó la versión activa.
 
-### `html_exporter.py`
+### `report_uploader.py`
 
 `upload_report_to_mlflow(run_id, html_path, artifact_subfolder, tracking_uri)` sube el HTML al artifact store. Si falla, loggea un warning y retorna `None` sin interrumpir el DAG (degradación graceful).
 

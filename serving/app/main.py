@@ -10,8 +10,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from .routes.health import router as health_router
 from .routes.predict import router as predict_router
-from .services.cache import PredictionCache
 from .services.model_loader import ModelLoader
+from .services.prediction_cache import PredictionCache
 from .services.prediction_store import PredictionStore
 
 _log = logging.getLogger(__name__)

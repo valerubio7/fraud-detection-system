@@ -25,9 +25,9 @@ from xgboost import XGBClassifier
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from feature_engineering.offline.class_imbalance import compute_scale_pos_weight
+from feature_engineering.offline.feature_selection import select_features
 from feature_engineering.offline.featurizer import TransactionFeaturizer
-from feature_engineering.offline.imbalance import compute_scale_pos_weight
-from feature_engineering.offline.selection import select_features
 from model.metrics import evaluate_model, find_optimal_threshold
 from model.plots import (
     save_confusion_matrix_plot,
@@ -303,9 +303,7 @@ def start_mlflow_run(
         run = mlflow.start_run(run_name=run_name)
 
         try:
-            git_commit = subprocess.check_output(
-                ["git", "rev-parse", "--short", "HEAD"], text=True
-            ).strip()
+            git_commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
         except Exception:
             git_commit = "unknown"
         mlflow.set_tag("git_commit", git_commit)
@@ -382,11 +380,7 @@ def log_mlflow_outputs(
         mlflow.log_params({f"best_{key}": value for key, value in tuning_best_params.items()})
 
     if evaluation_metrics is not None:
-        flattened = {
-            f"test_{key}": value
-            for key, value in evaluation_metrics.items()
-            if not isinstance(value, dict)
-        }
+        flattened = {f"test_{key}": value for key, value in evaluation_metrics.items() if not isinstance(value, dict)}
         nested_confusion = evaluation_metrics.get("confusion_matrix")
         if isinstance(nested_confusion, dict):
             for key, value in nested_confusion.items():
@@ -418,9 +412,7 @@ def main() -> None:
         try:
             import optuna  # noqa: F401
         except ImportError as exc:
-            raise SystemExit(
-                "Optuna is required for --tune. Install with: uv sync --group model"
-            ) from exc
+            raise SystemExit("Optuna is required for --tune. Install with: uv sync --group model") from exc
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

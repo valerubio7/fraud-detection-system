@@ -3,13 +3,11 @@ from __future__ import annotations
 from datetime import UTC
 from typing import Any
 
-from ingestion.avro_producer import AvroKafkaProducer
-from ingestion.models import Transaction
+from streaming.models import Transaction
+from streaming.publisher import AvroPublisher
 
 
-class TransactionProducer(AvroKafkaProducer):
-    """Produce transaction events to Kafka using Avro serialization."""
-
+class TransactionProducer(AvroPublisher):
     def __init__(
         self,
         broker_url: str,
@@ -30,8 +28,7 @@ class TransactionProducer(AvroKafkaProducer):
         )
 
     def send(self, transaction: Transaction) -> None:
-        """Send a transaction to the Kafka topic."""
-        self._produce(
+        self._publish(
             transaction.transaction_id,
             self._serialize_avro(self._transaction_to_dict(transaction)),
         )

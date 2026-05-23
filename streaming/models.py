@@ -7,8 +7,6 @@ from typing import Any
 
 @dataclass(frozen=True)
 class Transaction:
-    """A transaction event shared between producer and consumer."""
-
     transaction_id: str
     user_id: str
     merchant_id: str

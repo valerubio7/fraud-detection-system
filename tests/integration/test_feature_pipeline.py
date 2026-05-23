@@ -7,15 +7,15 @@ import fastavro
 import psycopg2
 import pytest
 
-from ingestion.consumer.feature_publisher import FeaturePublisher
-from ingestion.consumer.features import HistoricalFeatures, WindowFeatures
-from ingestion.consumer.historical_store import HistoricalProfileStore
-from ingestion.consumer.redis_store import RedisFeatureStore
-from ingestion.consumer.timescale_writer import TimescaleWriter
-from ingestion.consumer.window_store import SlidingWindowStore
-from ingestion.models import Transaction
+from streaming.features.feature_publisher import FeaturePublisher
+from streaming.features.feature_types import HistoricalFeatures, WindowFeatures
+from streaming.features.historical_profile_store import HistoricalProfileStore
+from streaming.features.sliding_window_store import SlidingWindowStore
+from streaming.features.transaction_store import TransactionStore
+from streaming.features.user_store import UserStore
+from streaming.models import Transaction
 
-FEATURES_SCHEMA_PATH = "ingestion/schemas/transaction_features.avsc"
+FEATURES_SCHEMA_PATH = "streaming/schemas/transaction_features.avsc"
 
 
 def make_test_transaction(user_id: str = "user_int_test") -> Transaction:
@@ -32,18 +32,18 @@ def make_test_transaction(user_id: str = "user_int_test") -> Transaction:
     )
 
 
-class TestTimescaleWriterIntegration:
+class TestTransactionStoreIntegration:
     def test_write_transaction_to_timescaledb(self, timescaledb_container):
-        """TimescaleWriter inserta correctamente una Transaction en la hypertable."""
+        """TransactionStore inserta correctamente una Transaction en la hypertable."""
         tx = make_test_transaction()
-        writer = TimescaleWriter(
+        writer = TransactionStore(
             host=timescaledb_container.get_container_host_ip(),
             port=int(timescaledb_container.get_exposed_port(5432)),
             user="test_user",
             password="test_pass",
             db="test_tsdb",
         )
-        assert writer.is_available, "TimescaleWriter debe estar disponible"
+        assert writer.is_available, "TransactionStore debe estar disponible"
 
         writer.write(tx)
 
@@ -68,7 +68,7 @@ class TestTimescaleWriterIntegration:
     def test_write_is_idempotent(self, timescaledb_container):
         """Escribir la misma transacción dos veces no duplica filas (ON CONFLICT DO NOTHING)."""
         tx = make_test_transaction(user_id="user_idempotent")
-        writer = TimescaleWriter(
+        writer = TransactionStore(
             host=timescaledb_container.get_container_host_ip(),
             port=int(timescaledb_container.get_exposed_port(5432)),
             user="test_user",
@@ -167,14 +167,14 @@ class TestFeaturePipelineKafkaIntegration:
         assert "tx_count_1h" in decoded["features"]
 
 
-class TestRedisFeatureStoreIntegration:
+class TestUserStoreIntegration:
     def test_save_and_load_user_window(self, redis_container):
-        """RedisFeatureStore guarda y recupera el estado del usuario correctamente."""
-        store = RedisFeatureStore(
+        """UserStore guarda y recupera el estado del usuario correctamente."""
+        store = UserStore(
             host=redis_container.get_container_host_ip(),
             port=int(redis_container.get_exposed_port(6379)),
         )
-        assert store.is_available, "RedisFeatureStore debe estar disponible"
+        assert store.is_available, "UserStore debe estar disponible"
 
         tx = make_test_transaction(user_id="user_redis_test")
         window_store = SlidingWindowStore()

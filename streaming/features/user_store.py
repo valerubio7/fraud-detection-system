@@ -7,7 +7,7 @@ from typing import Any
 
 import redis
 
-from ingestion.models import Transaction
+from streaming.models import Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ HISTORICAL_KEY_PREFIX = "features:historical"
 MAX_WINDOW_TRANSACTIONS = 500
 
 
-class RedisFeatureStore:
+class UserStore:
     """Persist and retrieve user feature state in Redis."""
 
     def __init__(
@@ -160,7 +160,7 @@ class RedisFeatureStore:
 
     @staticmethod
     def _deserialize_transaction(payload: dict[str, Any]) -> Transaction:
-        return Transaction.from_dict(payload, RedisFeatureStore._parse_timestamp(payload["timestamp"]))
+        return Transaction.from_dict(payload, UserStore._parse_timestamp(payload["timestamp"]))
 
     @staticmethod
     def _parse_timestamp(value: Any) -> datetime:
@@ -177,4 +177,4 @@ class RedisFeatureStore:
         self._is_available = False
 
 
-__all__ = ["RedisFeatureStore"]
+__all__ = ["UserStore"]

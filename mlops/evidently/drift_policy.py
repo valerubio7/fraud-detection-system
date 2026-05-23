@@ -57,17 +57,14 @@ def evaluate_drift_action(
         severity = "HIGH"
         if any_critical:
             message = (
-                f"High drift: critical features drifted={critical_features_drifted}, "
-                f"global score={drift_score:.3f}"
+                f"High drift: critical features drifted={critical_features_drifted}, global score={drift_score:.3f}"
             )
         else:
             deg = model_drift_result.get("f1_degradation")
             message = f"High drift: model F1 degradation={deg:.3f}, global score={drift_score:.3f}"
     elif drift_score > DRIFT_THRESHOLD_GLOBAL:
         severity = "WARNING"
-        message = (
-            f"Global data drift score={drift_score:.3f} exceeds threshold={DRIFT_THRESHOLD_GLOBAL}"
-        )
+        message = f"Global data drift score={drift_score:.3f} exceeds threshold={DRIFT_THRESHOLD_GLOBAL}"
     else:
         severity = "INFO"
         message = f"Drift within acceptable bounds: global score={drift_score:.3f}"

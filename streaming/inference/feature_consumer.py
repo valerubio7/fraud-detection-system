@@ -17,7 +17,7 @@ DEFAULT_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "transac
 DEFAULT_GROUP_ID = "fraud-inference-consumer"
 
 
-class FeaturesConsumer:
+class FeatureConsumer:
     """Consume enriched transaction messages from Kafka using Avro deserialization."""
 
     def __init__(
@@ -154,4 +154,4 @@ class FeaturesConsumer:
             logger.error("Failed to close consumer: %s", exc)
 
 
-__all__ = ["FeaturesConsumer"]
+__all__ = ["FeatureConsumer"]

@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ingestion.models import Transaction
+from streaming.models import Transaction
 
-from .features import HistoricalFeatures
+from .feature_types import HistoricalFeatures
 
 
 @dataclass
@@ -91,12 +91,8 @@ class HistoricalProfileStore:
         self._profiles[user_id] = _UserProfile(
             amount_total=float(raw_profile.get("amount_total", 0.0)),
             amount_count=int(raw_profile.get("amount_count", 0)),
-            countries_seen={str(c) for c in countries_raw}
-            if isinstance(countries_raw, list)
-            else set(),
-            merchants_seen={str(m) for m in merchants_raw}
-            if isinstance(merchants_raw, list)
-            else set(),
+            countries_seen={str(c) for c in countries_raw} if isinstance(countries_raw, list) else set(),
+            merchants_seen={str(m) for m in merchants_raw} if isinstance(merchants_raw, list) else set(),
         )
 
 

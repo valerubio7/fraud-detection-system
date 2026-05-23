@@ -1,6 +1,6 @@
 import pytest
 
-from ingestion.consumer.historical_store import HistoricalProfileStore
+from streaming.features.historical_profile_store import HistoricalProfileStore
 
 from .conftest import make_transaction
 

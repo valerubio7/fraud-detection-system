@@ -164,7 +164,7 @@ Esto permite un pipeline robusto desde el inicio.
 
 ### 3.4 Consumer base y deserializacion
 
-Se implemento `ingestion/consumer/kafka_consumer.py` para:
+Se implemento `ingestion/consumer/transaction_consumer.py` para:
 
 - Consumir mensajes Avro de `transactions.raw`
 - Convertir a `TransactionRaw`
@@ -189,7 +189,7 @@ Los calculos de ventana viven en `window_store.py` y los historicos en `historic
 
 ### 3.6 Redis como feature store
 
-Se agrego `redis_store.py` para guardar y rehidratar el estado por usuario:
+Se agrego `user_store.py` para guardar y rehidratar el estado por usuario:
 
 - Ventanas: `features:window:<user_id>`
 - Historico: `features:historical:<user_id>`
@@ -199,7 +199,7 @@ El consumer hidrata el estado al primer evento de cada usuario, lo que permite c
 
 ### 3.7 TimescaleDB writer
 
-En `timescale_writer.py` se implemento insercion idempotente en `public.transactions`, con pool de conexiones y manejo de errores. Si Timescale no esta disponible, el consumer sigue procesando el stream sin persistencia, evitando bloqueos.
+En `transaction_store.py` se implemento insercion idempotente en `public.transactions`, con pool de conexiones y manejo de errores. Si Timescale no esta disponible, el consumer sigue procesando el stream sin persistencia, evitando bloqueos.
 
 ### 3.8 Publicacion de features
 
@@ -290,7 +290,7 @@ Este orden garantiza que la base de datos nunca quede desincronizada del registr
 
 Durante las pruebas end-to-end de la Fase 4 se realizaron los siguientes ajustes:
 
-- **Consolidacion de ingestion**: `Transaction` se movio a `ingestion/models.py` y utilidades de timezone a `ingestion/utils.py`. `AvroKafkaProducer` se extrajo a `ingestion/avro_producer.py`. Los modulos del consumer se renombraron: `windows.py` → `window_store.py`, `historical.py` → `historical_store.py`, `feature_models.py` → `features.py`.
+- **Consolidacion de ingestion**: `Transaction` se movio a `ingestion/models.py` y utilidades de timezone a `ingestion/utils.py`. `AvroPublisher` se extrajo a `ingestion/kafka_publisher.py`. Los modulos del consumer se renombraron: `windows.py` → `window_store.py`, `historical.py` → `historical_store.py`, `feature_models.py` → `features.py`.
 - **Extraccion de modulos del modelo**: funciones de evaluacion a `model/metrics.py`, de visualizacion a `model/plots.py`. `model/features.py` se renombro a `model/selected_features.py`. Se corrigio un bug en `select_features` donde `max_iter` era usado sin estar declarado como parametro.
 - **Seed simplificado**: se reemplazo `scripts/seed-timescale.sh` por el comando Docker documentado en `database/timescaledb/seeds/README.md`, corrigiendo ademas los nombres de variables de entorno y agregando `PYTHONPATH=/app`.
 - **Dependencias**: se agregaron `joblib`, `psycopg2-binary` y `pydantic-settings` al grupo `model` de `pyproject.toml`.
@@ -331,13 +331,13 @@ Los schemas Pydantic están en `serving/app/schemas/prediction.py`: `Transaction
 
 Se implementó un nuevo consumer en `ingestion/inference_consumer/` que cierra el loop online:
 
-**FeaturesConsumer** (`features_consumer.py`): consume mensajes Avro del topic `transactions.features`. Deserializa con fastavro, maneja errores con retry queue (un reintento por mensaje), y commit manual solo tras inferencia exitosa.
+**FeatureConsumer** (`consumer.py`): consume mensajes Avro del topic `transactions.features`. Deserializa con fastavro, maneja errores con retry queue (un reintento por mensaje), y commit manual solo tras inferencia exitosa.
 
 **InferenceApiClient** (`api_client.py`): cliente HTTP sincrónico con httpx que llama a `POST /predict` de FastAPI. Timeout de 2s. Convierte UTC el timestamp antes de enviar.
 
 **CircuitBreaker** (`circuit_breaker.py`): breaker en memoria con tres estados (CLOSED → OPEN → HALF_OPEN). Abre tras 5 fallos consecutivos y reintenta tras 30s de cooldown. Cuando está OPEN, salta inferencia sin llamar a la API.
 
-**PredictionPublisher** (`prediction_publisher.py`): serializa en Avro el resultado de la predicción y lo publica en `transactions.predictions` usando `AvroKafkaProducer`.
+**PredictionPublisher** (`prediction_publisher.py`): serializa en Avro el resultado de la predicción y lo publica en `transactions.predictions` usando `AvroPublisher`.
 
 **AlertPublisher** (`alert_publisher.py`): cuando el label de predicción es positivo, clasifica la severidad (`CRITICAL` si score >= 0.90, `HIGH` si >= 0.75, `WARNING` en otro caso) y publica una alerta en `fraud.alerts`.
 

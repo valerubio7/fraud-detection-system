@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from ingestion.consumer.window_store import SlidingWindowStore
+from streaming.features.sliding_window_store import SlidingWindowStore
 
 from .conftest import make_transaction
 

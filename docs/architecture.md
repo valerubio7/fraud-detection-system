@@ -66,7 +66,7 @@ El `Consumer` (group id: `fraud-feature-engineering`) procesa cada mensaje de `t
 1. **`SlidingWindowStore`**: calcula features de ventana temporal sin tocar la base de datos — mantiene el historial en memoria y evicta entradas > 7 días. Produce `tx_count_1h/24h/7d`, `amount_sum_1h/24h`, `seconds_since_last_tx`.
 2. **`HistoricalProfileStore`**: calcula features del perfil histórico del usuario — `amount_ratio_vs_user_avg`, `is_country_new`, `is_merchant_new`, `distinct_countries_seen/merchants_seen`.
 3. **Redis**: persiste el estado de ambos stores para sobrevivir reinicios. Opera con circuit breaker: si Redis no está disponible, el consumer continúa en modo degradado (estado en memoria solamente).
-4. **`TimescaleWriter`**: inserta la transacción enriquecida en TimescaleDB con `ON CONFLICT DO NOTHING` (idempotente).
+4. **`TransactionStore`**: inserta la transacción enriquecida en TimescaleDB con `ON CONFLICT DO NOTHING` (idempotente).
 5. **`FeaturePublisher`**: serializa con Avro y publica en `transactions.features`.
 
 ### Serving (FastAPI)

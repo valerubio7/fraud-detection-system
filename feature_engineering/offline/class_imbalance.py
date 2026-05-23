@@ -49,9 +49,7 @@ def compute_scale_pos_weight(y: pd.Series) -> float:
     """
     n_pos = int((y == 1).sum())
     if n_pos == 0:
-        raise ValueError(
-            "No positive examples (fraud=1) found in y. Cannot compute scale_pos_weight."
-        )
+        raise ValueError("No positive examples (fraud=1) found in y. Cannot compute scale_pos_weight.")
     n_neg = int((y == 0).sum())
     return n_neg / n_pos
 
@@ -215,9 +213,7 @@ def run_imbalance_analysis(
     strategy_results = evaluate_imbalance_strategy(X_train, y_train, X_val, y_val, random_state)
 
     recommended = max(strategy_results, key=lambda s: strategy_results[s]["f1"])
-    recommended_spw = (
-        compute_scale_pos_weight(y_train) if recommended == "scale_pos_weight" else None
-    )
+    recommended_spw = compute_scale_pos_weight(y_train) if recommended == "scale_pos_weight" else None
 
     report = ImbalanceReport(
         strategy_results=strategy_results,
@@ -228,8 +224,7 @@ def run_imbalance_analysis(
 
     best_metrics = strategy_results[recommended]
     logger.info(
-        "Recommended strategy: %s | F1=%.4f | Precision=%.4f | Recall=%.4f | "
-        "ROC-AUC=%.4f | Avg Precision=%.4f",
+        "Recommended strategy: %s | F1=%.4f | Precision=%.4f | Recall=%.4f | ROC-AUC=%.4f | Avg Precision=%.4f",
         recommended,
         best_metrics["f1"],
         best_metrics["precision"],
