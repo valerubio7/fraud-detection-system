@@ -1,7 +1,5 @@
 """Detección de model drift comparando métricas de producción vs. referencia de training."""
 
-from __future__ import annotations
-
 import os
 from dataclasses import dataclass
 
@@ -95,9 +93,7 @@ def run_model_drift_report(
         current_precision = None
         current_recall = None
 
-    f1_degradation = (
-        (current_f1 - reference_f1) if current_f1 is not None and reference_f1 is not None else None
-    )
+    f1_degradation = (current_f1 - reference_f1) if current_f1 is not None and reference_f1 is not None else None
     drift_detected = f1_degradation is not None and f1_degradation < -0.05
 
     return ModelDriftResult(

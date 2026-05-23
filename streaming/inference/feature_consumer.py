@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import io
 import json
 import logging
@@ -18,8 +16,6 @@ DEFAULT_GROUP_ID = "fraud-inference-consumer"
 
 
 class FeatureConsumer:
-    """Consume enriched transaction messages from Kafka using Avro deserialization."""
-
     def __init__(
         self,
         broker_url: str = os.getenv("KAFKA_BROKER_URL", "kafka:29092"),
@@ -49,11 +45,7 @@ class FeatureConsumer:
         self._deserialization_failures: dict[tuple[int, int], int] = {}
         self._retry_queue: deque[Message] = deque()
 
-        logger.info(
-            "Initialized Kafka consumer for topic %s with broker %s",
-            self._topic,
-            self._broker_url,
-        )
+        logger.info("Initialized Kafka consumer for topic %s with broker %s", self._topic, self._broker_url)
 
     @staticmethod
     def _load_schema(schema_path: Path) -> dict[str, Any]:
@@ -105,7 +97,6 @@ class FeatureConsumer:
         self._retry_queue.append(message)
 
     def consume(self, timeout: float) -> dict | None:
-        """Consume a single message and return the Avro dict if available."""
         message = self._retry_queue.popleft() if self._retry_queue else self._poll_message(timeout)
         if message is None:
             return None
@@ -129,7 +120,6 @@ class FeatureConsumer:
         return data
 
     def commit(self) -> None:
-        """Commit the latest consumed message offset."""
         if self._last_message is None:
             return
 
@@ -147,7 +137,6 @@ class FeatureConsumer:
             self._last_message = None
 
     def close(self) -> None:
-        """Close the consumer cleanly."""
         try:
             self._consumer.close()
         except KafkaException as exc:

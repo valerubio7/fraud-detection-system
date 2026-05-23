@@ -1,7 +1,5 @@
 """Lógica reutilizable de data drift con Evidently AI."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 
 import pandas as pd

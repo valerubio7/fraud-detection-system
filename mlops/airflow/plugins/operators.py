@@ -1,7 +1,5 @@
 """Custom Airflow operators para el pipeline de fraud detection MLOps."""
 
-from __future__ import annotations
-
 import os
 import sys
 from typing import Any

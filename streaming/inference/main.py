@@ -1,18 +1,14 @@
-"""Entry point for the inference consumer."""
-
-from __future__ import annotations
-
 import logging
 import os
 import signal
 import threading
 import time
 
-from .alert_publisher import AlertPublisher
-from .api_client import InferenceApiClient
-from .circuit_breaker import CircuitBreaker
-from .feature_consumer import FeatureConsumer
-from .prediction_publisher import PredictionPublisher
+from streaming.inference.alert_publisher import AlertPublisher
+from streaming.inference.api_client import InferenceApiClient
+from streaming.inference.circuit_breaker import CircuitBreaker
+from streaming.inference.feature_consumer import FeatureConsumer
+from streaming.inference.prediction_publisher import PredictionPublisher
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +21,7 @@ INFERENCE_RATE_LIMIT_MS = int(os.getenv("INFERENCE_RATE_LIMIT_MS", "0"))
 def configure_logging() -> None:
     level_name = os.getenv("LOG_LEVEL", "INFO").upper()
     level = logging.getLevelNamesMapping().get(level_name, logging.INFO)
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    logging.basicConfig(level=level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 def install_signal_handlers(stop_event: threading.Event) -> None:
@@ -65,8 +58,7 @@ def main() -> None:
         topic=os.getenv("KAFKA_TOPICS_ALERTS", "transactions.fraud.alerts"),
     )
     circuit_breaker = CircuitBreaker(
-        failure_threshold=INFERENCE_FAILURE_THRESHOLD,
-        cooldown_seconds=INFERENCE_COOLDOWN_SECONDS,
+        failure_threshold=INFERENCE_FAILURE_THRESHOLD, cooldown_seconds=INFERENCE_COOLDOWN_SECONDS
     )
 
     model_info = api_client.fetch_model_info()
@@ -89,10 +81,7 @@ def main() -> None:
                 continue
 
             if circuit_breaker.is_open():
-                logger.warning(
-                    "Circuit breaker OPEN — skipping transaction %s",
-                    message["transaction_id"],
-                )
+                logger.warning("Circuit breaker OPEN — skipping transaction %s", message["transaction_id"])
                 continue
 
             try:
@@ -122,9 +111,7 @@ def main() -> None:
                         )
                     except Exception as exc:
                         logger.error(
-                            "Failed to publish fraud alert for transaction %s: %s",
-                            message["transaction_id"],
-                            exc,
+                            "Failed to publish fraud alert for transaction %s: %s", message["transaction_id"], exc
                         )
 
                 circuit_breaker.record_success()
@@ -136,10 +123,7 @@ def main() -> None:
             except Exception as exc:
                 circuit_breaker.record_failure()
                 logger.error(
-                    "Inference failed for %s (circuit=%s): %s",
-                    message["transaction_id"],
-                    circuit_breaker.state(),
-                    exc,
+                    "Inference failed for %s (circuit=%s): %s", message["transaction_id"], circuit_breaker.state(), exc
                 )
     finally:
         alert_publisher.close()

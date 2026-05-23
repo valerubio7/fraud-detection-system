@@ -1,7 +1,5 @@
 """DAG horario de calidad de datos del pipeline de streaming."""
 
-from __future__ import annotations
-
 import logging
 import os
 import sys
@@ -61,10 +59,7 @@ def data_quality_check() -> None:
         conn_ts = _ts_conn()
         try:
             with conn_ts.cursor() as cur:
-                cur.execute(
-                    "SELECT COUNT(*) FROM public.transactions "
-                    "WHERE timestamp >= NOW() - INTERVAL '1 hour'"
-                )
+                cur.execute("SELECT COUNT(*) FROM public.transactions WHERE timestamp >= NOW() - INTERVAL '1 hour'")
                 count = cur.fetchone()[0]
         finally:
             conn_ts.close()
@@ -92,8 +87,7 @@ def data_quality_check() -> None:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT COUNT(*) FROM public.predictions_history "
-                    "WHERE timestamp >= NOW() - INTERVAL '1 hour'"
+                    "SELECT COUNT(*) FROM public.predictions_history WHERE timestamp >= NOW() - INTERVAL '1 hour'"
                 )
                 count = cur.fetchone()[0]
 

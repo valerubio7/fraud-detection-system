@@ -1,7 +1,5 @@
 """Persistencia de reportes de drift en PostgreSQL."""
 
-from __future__ import annotations
-
 import os
 
 
@@ -73,8 +71,7 @@ class DriftReportStore:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO public.alert_log"
-                    " (alert_type, severity, message) VALUES (%s, %s, %s)",
+                    "INSERT INTO public.alert_log (alert_type, severity, message) VALUES (%s, %s, %s)",
                     (alert_type, severity, message),
                 )
             conn.commit()

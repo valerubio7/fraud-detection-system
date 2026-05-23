@@ -1,7 +1,5 @@
 """Thresholds configurables y lógica de severidad para alertas de drift."""
 
-from __future__ import annotations
-
 import logging
 import os
 from dataclasses import dataclass

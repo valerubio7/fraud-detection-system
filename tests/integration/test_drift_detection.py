@@ -1,7 +1,5 @@
 """Integration tests for Evidently drift detection, DriftReportStore, and evaluate_drift_action."""
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 

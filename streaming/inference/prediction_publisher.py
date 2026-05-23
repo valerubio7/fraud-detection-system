@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -9,14 +7,9 @@ _SCHEMA_PATH = str(Path(__file__).resolve().parents[1] / "schemas" / "transactio
 
 
 class PredictionPublisher(AvroPublisher):
-    """Publish model predictions to Kafka using Avro serialization."""
-
     def __init__(self, broker_url: str, topic: str) -> None:
         super().__init__(
-            broker_url=broker_url,
-            topic=topic,
-            schema_path=_SCHEMA_PATH,
-            client_id="fraud-inference-publisher",
+            broker_url=broker_url, topic=topic, schema_path=_SCHEMA_PATH, client_id="fraud-inference-publisher"
         )
 
     def publish(

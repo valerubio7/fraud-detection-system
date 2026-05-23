@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import time
 
@@ -7,8 +5,6 @@ logger = logging.getLogger(__name__)
 
 
 class CircuitBreaker:
-    """Simple in-memory circuit breaker for the inference API client."""
-
     def __init__(self, failure_threshold: int = 5, cooldown_seconds: float = 30.0) -> None:
         self.failure_threshold = failure_threshold
         self.cooldown_seconds = cooldown_seconds

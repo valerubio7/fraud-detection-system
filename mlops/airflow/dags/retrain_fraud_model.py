@@ -1,7 +1,5 @@
 """DAG diario de reentrenamiento del modelo de detección de fraude."""
 
-from __future__ import annotations
-
 import os
 import re
 import subprocess

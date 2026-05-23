@@ -1,7 +1,5 @@
 """DAG de detección de drift cada 6 horas usando Evidently AI."""
 
-from __future__ import annotations
-
 import os
 import sys
 from datetime import datetime

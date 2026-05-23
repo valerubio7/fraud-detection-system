@@ -1,7 +1,5 @@
 """Exportación de reportes HTML de Evidently a MLflow como artefactos."""
 
-from __future__ import annotations
-
 import logging
 import os
 

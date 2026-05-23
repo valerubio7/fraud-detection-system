@@ -1,7 +1,5 @@
 """Utilidades para cargar el dataset de referencia desde MLflow."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pandas as pd
