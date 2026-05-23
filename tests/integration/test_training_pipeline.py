@@ -207,7 +207,7 @@ class TestTrainingPipelineIntegration:
 
     def test_load_transactions_returns_dataframe(self):
         """load_transactions debe retornar un DataFrame con >= 2000 filas."""
-        from model.train import load_transactions
+        from model.pipeline.train import load_transactions
 
         df = load_transactions(limit=None)
         assert len(df) >= 2000
@@ -216,8 +216,8 @@ class TestTrainingPipelineIntegration:
 
     def test_build_features_returns_correct_columns(self):
         """build_features debe retornar un DataFrame con exactamente SELECTED_FEATURES."""
-        from model.selected_features import SELECTED_FEATURES
-        from model.train import build_features, load_transactions
+        from model.pipeline.train import build_features, load_transactions
+        from model.utils.selected_features import SELECTED_FEATURES
 
         df = load_transactions(limit=500)
         y = df["is_fraud"].astype(int)
@@ -230,7 +230,7 @@ class TestTrainingPipelineIntegration:
         def mock_select(X, y_s, **kwargs):
             return _make_selection_report(X, SELECTED_FEATURES)
 
-        with patch("model.train.select_features", side_effect=mock_select):
+        with patch("model.pipeline.train.select_features", side_effect=mock_select):
             X, _ = build_features(df, y, output_dir=output_dir, seed=42)
 
         assert list(X.columns) == SELECTED_FEATURES
@@ -238,8 +238,8 @@ class TestTrainingPipelineIntegration:
 
     def test_full_training_registers_model_in_mlflow(self):
         """El pipeline completo registra el modelo en MLflow."""
-        from model.selected_features import SELECTED_FEATURES
-        from model.train import build_features, load_transactions, temporal_split, train_model
+        from model.pipeline.train import build_features, load_transactions, temporal_split, train_model
+        from model.utils.selected_features import SELECTED_FEATURES
         from offline_features.imbalance_strategies import compute_scale_pos_weight
 
         df = load_transactions(limit=1000)
@@ -250,7 +250,7 @@ class TestTrainingPipelineIntegration:
         def mock_select(X, y_s, **kwargs):
             return _make_selection_report(X, SELECTED_FEATURES)
 
-        with patch("model.train.select_features", side_effect=mock_select):
+        with patch("model.pipeline.train.select_features", side_effect=mock_select):
             with mlflow.start_run() as run:
                 X, _ = build_features(df, y, output_dir=output_dir, seed=42)
                 X_train, X_val, X_test, y_train, y_val, y_test = temporal_split(X, y)

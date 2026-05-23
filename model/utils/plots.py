@@ -8,12 +8,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import (
-    average_precision_score,
-    precision_recall_curve,
-    roc_auc_score,
-    roc_curve,
-)
+from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score, roc_curve
 
 
 def save_confusion_matrix_plot(confusion: dict[str, int], output_path: Path) -> None:
@@ -64,18 +59,10 @@ def save_pr_curve_plot(y_true: np.ndarray, proba: np.ndarray, output_path: Path)
     plt.close(fig)
 
 
-def save_feature_importance_plot(
-    model: Any,
-    feature_names: list[str],
-    output_path: Path,
-    *,
-    top_n: int = 20,
-) -> None:
+def save_feature_importance_plot(model: Any, feature_names: list[str], output_path: Path, *, top_n: int = 20) -> None:
     booster = model.get_booster()
     scores = booster.get_score(importance_type="gain")
-    resolved = [
-        (_resolve_feature_name(name, feature_names), float(score)) for name, score in scores.items()
-    ]
+    resolved = [(_resolve_feature_name(name, feature_names), float(score)) for name, score in scores.items()]
     resolved.sort(key=lambda item: item[1], reverse=True)
     top = resolved[:top_n]
 
@@ -95,9 +82,7 @@ def save_feature_importance_plot(
 
 
 def save_threshold_analysis_plot(
-    threshold_metrics: dict[str, list[float]],
-    optimal_threshold: float,
-    output_path: Path,
+    threshold_metrics: dict[str, list[float]], optimal_threshold: float, output_path: Path
 ) -> None:
     thresholds = threshold_metrics["thresholds"]
     fig, ax = plt.subplots(figsize=(6, 4))

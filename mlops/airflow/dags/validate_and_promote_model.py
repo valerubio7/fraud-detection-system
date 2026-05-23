@@ -39,7 +39,7 @@ def validate_and_promote_model() -> None:
 
     @task
     def run_quality_gates_task(model_params: dict) -> dict:
-        from model.evaluate import run_quality_gates
+        from model.pipeline.evaluate import run_quality_gates
 
         result = run_quality_gates(model_params["model_name"], model_params["model_version"])
         return {
@@ -54,11 +54,9 @@ def validate_and_promote_model() -> None:
         if not gate_result["passed"]:
             raise AirflowSkipException("Quality gates failed — skipping champion comparison")
 
-        from model.evaluate import compare_challenger_vs_champion
+        from model.pipeline.evaluate import compare_challenger_vs_champion
 
-        result = compare_challenger_vs_champion(
-            model_params["model_name"], model_params["model_version"]
-        )
+        result = compare_challenger_vs_champion(model_params["model_name"], model_params["model_version"])
         return {
             "challenger_wins": result.challenger_wins,
             "reason": result.reason,
@@ -70,7 +68,7 @@ def validate_and_promote_model() -> None:
         if not comparison["challenger_wins"]:
             raise AirflowSkipException(comparison["reason"])
 
-        from model.promote import promote_to_production
+        from model.pipeline.promote import promote_to_production
 
         result = promote_to_production(model_params["model_name"], model_params["model_version"])
         return {
@@ -91,9 +89,7 @@ def validate_and_promote_model() -> None:
             version=version,
             stage="Archived",
         )
-        logging.warning(
-            "Model v%s archived after failing quality gates or champion comparison", version
-        )
+        logging.warning("Model v%s archived after failing quality gates or champion comparison", version)
 
     data = extract_model_params()
     gates = run_quality_gates_task(data)

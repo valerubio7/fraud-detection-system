@@ -67,7 +67,7 @@ def retrain_fraud_model() -> None:
         result = subprocess.run(
             [
                 sys.executable,
-                "/opt/airflow/project/model/train.py",
+                "/opt/airflow/project/model/pipeline/train.py",
                 "--seed",
                 "42",
                 "--output-dir",
@@ -95,10 +95,7 @@ def retrain_fraud_model() -> None:
         model_name = os.getenv("MODEL_NAME", "FraudDetectionModel")
         versions = client.get_latest_versions(model_name, stages=["Staging"])
         if not versions:
-            raise RuntimeError(
-                f"No se encontró ninguna versión en Staging para '{model_name}' "
-                "tras el entrenamiento."
-            )
+            raise RuntimeError(f"No se encontró ninguna versión en Staging para '{model_name}' tras el entrenamiento.")
         model_version = versions[0].version
 
         return {

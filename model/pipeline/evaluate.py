@@ -5,6 +5,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 import mlflow
@@ -15,10 +16,10 @@ import psycopg2
 from mlflow.tracking import MlflowClient
 from sklearn.metrics import f1_score, roc_auc_score
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from model.selected_features import SELECTED_FEATURES  # noqa: E402
-from offline_features.featurizer import TransactionFeaturizer  # noqa: E402
+from model.utils.selected_features import SELECTED_FEATURES
+from offline_features.featurizer import TransactionFeaturizer
 
 MIN_F1 = 0.85
 MIN_AUC_ROC = 0.90
@@ -49,13 +50,11 @@ class ChampionComparisonResult:
 
 
 def load_model(model_name: str, model_version: str) -> object:
-    """Load a model version from MLflow Model Registry by name and version."""
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
     return _load_model_from_uri(f"models:/{model_name}/{model_version}")
 
 
 def load_champion_model(model_name: str) -> object | None:
-    """Load the Production champion model, or None if no version is in Production."""
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
     client = MlflowClient()
     if not client.get_latest_versions(model_name, stages=["Production"]):
@@ -66,13 +65,12 @@ def load_champion_model(model_name: str) -> object | None:
         raise RuntimeError(f"Champion model exists in Production stage but failed to load: {exc}") from exc
 
 
-def compute_features(df: pd.DataFrame) -> pd.DataFrame:
-    featurizer = TransactionFeaturizer(encoders_dir="artifacts/model")
+def compute_features(df: pd.DataFrame, encoders_dir: str = "artifacts/model") -> pd.DataFrame:
+    featurizer = TransactionFeaturizer(encoders_dir=encoders_dir)
     return featurizer.transform(df)[SELECTED_FEATURES]
 
 
 def measure_latency(model: object, X_sample: pd.DataFrame, n_repetitions: int = 10) -> float:
-    """Return P99 prediction latency in milliseconds over n_repetitions batches."""
     X_batch = X_sample.iloc[: min(1000, len(X_sample))]
     timings = np.zeros(n_repetitions)
     for i in range(n_repetitions):
@@ -83,18 +81,26 @@ def measure_latency(model: object, X_sample: pd.DataFrame, n_repetitions: int = 
 
 
 def run_quality_gates(model_name: str, model_version: str) -> GateResult:
-    """Evaluate a model version against quality gates and return the result."""
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
+    client = MlflowClient()
+
+    _, run_metrics, run_params = _get_run_for_model_version(client, model_name, model_version)
+    optimal_threshold = run_metrics.get("optimal_threshold", 0.5)
+    training_data_from = _parse_timestamp(run_params.get("training_data_from"))
+    training_data_to = _parse_timestamp(run_params.get("training_data_to"))
+
     print(f"Loading model {model_name} version {model_version} from MLflow...")
     model = load_model(model_name, model_version)
 
     print("Loading test data from TimescaleDB...")
-    test_df = _load_test_data()
+    test_df = _load_test_data(training_data_from, training_data_to)
     y_test = test_df["is_fraud"].astype(int)
     print(f"Test set size: {len(test_df)} transactions")
 
-    X_test = compute_features(test_df)
+    encoders_dir = os.getenv("MODEL_ARTIFACTS_DIR", "artifacts/model")
+    X_test = compute_features(test_df, encoders_dir)
     proba = model.predict_proba(X_test)[:, 1]
-    preds = (proba >= 0.5).astype(int)
+    preds = (proba >= optimal_threshold).astype(int)
 
     f1 = float(f1_score(y_test, preds, zero_division=0))
     auc_roc = float(roc_auc_score(y_test, proba))
@@ -117,7 +123,9 @@ def run_quality_gates(model_name: str, model_version: str) -> GateResult:
 
 
 def compare_challenger_vs_champion(challenger_name: str, challenger_version: str) -> ChampionComparisonResult:
-    """Compare a challenger model against the Production champion on the test set."""
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
+    client = MlflowClient()
+
     print("Loading champion model from Production stage...")
     champion = load_champion_model(challenger_name)
 
@@ -137,19 +145,28 @@ def compare_challenger_vs_champion(challenger_name: str, challenger_version: str
     print("Loading challenger model...")
     challenger = load_model(challenger_name, challenger_version)
 
+    _, challenger_metrics, challenger_params = _get_run_for_model_version(client, challenger_name, challenger_version)
+    challenger_threshold = challenger_metrics.get("optimal_threshold", 0.5)
+    training_data_from = _parse_timestamp(challenger_params.get("training_data_from"))
+    training_data_to = _parse_timestamp(challenger_params.get("training_data_to"))
+
+    _, champion_metrics, _ = _get_run_for_production(client, challenger_name)
+    champion_threshold = champion_metrics.get("optimal_threshold", 0.5)
+
     print("Loading test data for comparison...")
-    test_df = _load_test_data()
+    test_df = _load_test_data(training_data_from, training_data_to)
     y_test = test_df["is_fraud"].astype(int)
     print(f"Test set size: {len(test_df)} transactions")
 
-    X_test = compute_features(test_df)
+    encoders_dir = os.getenv("MODEL_ARTIFACTS_DIR", "artifacts/model")
+    X_test = compute_features(test_df, encoders_dir)
 
     challenger_proba = challenger.predict_proba(X_test)[:, 1]
-    challenger_f1 = float(f1_score(y_test, (challenger_proba >= 0.5).astype(int), zero_division=0))
+    challenger_f1 = float(f1_score(y_test, (challenger_proba >= challenger_threshold).astype(int), zero_division=0))
     challenger_auc = float(roc_auc_score(y_test, challenger_proba))
 
     champion_proba = champion.predict_proba(X_test)[:, 1]
-    champion_f1 = float(f1_score(y_test, (champion_proba >= 0.5).astype(int), zero_division=0))
+    champion_f1 = float(f1_score(y_test, (champion_proba >= champion_threshold).astype(int), zero_division=0))
     champion_auc = float(roc_auc_score(y_test, champion_proba))
 
     f1_diff = challenger_f1 - champion_f1
@@ -175,7 +192,33 @@ def compare_challenger_vs_champion(challenger_name: str, challenger_version: str
     return result
 
 
-def _load_test_data() -> pd.DataFrame:
+def _get_run_for_model_version(client: MlflowClient, model_name: str, model_version: str) -> tuple[str, dict, dict]:
+    mv = client.get_model_version(model_name, model_version)
+    run = client.get_run(mv.run_id)
+    return mv.run_id, run.data.metrics, run.data.params
+
+
+def _get_run_for_production(client: MlflowClient, model_name: str) -> tuple[str, dict, dict]:
+    versions = client.get_latest_versions(model_name, stages=["Production"])
+    if not versions:
+        return "", {}, {}
+    run = client.get_run(versions[0].run_id)
+    return versions[0].run_id, run.data.metrics, run.data.params
+
+
+def _parse_timestamp(raw: str | None) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw)
+    except (ValueError, TypeError):
+        return None
+
+
+def _load_test_data(
+    training_data_from: datetime | None = None,
+    training_data_to: datetime | None = None,
+) -> pd.DataFrame:
     conn = psycopg2.connect(
         host=os.getenv("TIMESCALE_HOST", "timescaledb"),
         port=int(os.getenv("TIMESCALE_PORT", "5432")),
@@ -183,19 +226,28 @@ def _load_test_data() -> pd.DataFrame:
         password=os.getenv("TIMESCALE_PASSWORD"),
         dbname=os.getenv("TIMESCALE_DB", "fraud_transactions_timeseries"),
     )
-    query = """
+    conditions = ["is_fraud IS NOT NULL"]
+    params: list = []
+    if training_data_from is not None:
+        conditions.append("timestamp >= %s")
+        params.append(training_data_from)
+    if training_data_to is not None:
+        conditions.append("timestamp <= %s")
+        params.append(training_data_to)
+    where = " AND ".join(conditions)
+    query = f"""
         SELECT transaction_id, user_id, merchant_id, merchant_category,
                amount, country, device_type, ip_hash, timestamp, is_fraud
         FROM public.transactions
-        WHERE is_fraud IS NOT NULL
+        WHERE {where}
         ORDER BY timestamp
     """
-    df = pd.read_sql(query, conn)
+    df = pd.read_sql(query, conn, params=params or None)
     conn.close()
 
     if len(df) < 100:
         raise RuntimeError(f"Only {len(df)} labeled transactions found. At least 100 are required.")
-    split_idx = int(len(df) * 0.8)
+    split_idx = int(len(df) * 0.85)
     return df.iloc[split_idx:].reset_index(drop=True)
 
 
@@ -297,11 +349,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate quality gates and compare challenger vs champion.")
     parser.add_argument("--model-name", required=True, help="MLflow Model Registry name.")
     parser.add_argument("--model-version", required=True, help="Model version number.")
-    parser.add_argument(
-        "--compare",
-        action="store_true",
-        help="Compare the model against the Production champion after quality gates.",
-    )
+    parser.add_argument("--compare", action="store_true", help="Compare the Production champion after quality gates.")
     return parser.parse_args()
 
 

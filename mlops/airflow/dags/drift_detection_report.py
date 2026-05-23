@@ -17,7 +17,7 @@ sys.path.insert(0, "/opt/airflow/project")
 from operators import EvidentlyReportOperator, TimescaleExtractOperator
 
 from mlops.evidently.reference_data import load_reference_dataset
-from model.selected_features import SELECTED_FEATURES
+from model.utils.selected_features import SELECTED_FEATURES
 
 DAG_ID = "drift_detection_report"
 ENCODER_ARTIFACT_PATH = "categorical_encoder.joblib"
@@ -174,7 +174,7 @@ def drift_detection_report() -> None:
 
         from mlops.evidently.data_drift import run_data_drift_report_with_html
         from mlops.evidently.report_uploader import upload_report_to_mlflow
-        from model.selected_features import SELECTED_FEATURES
+        from model.utils.selected_features import SELECTED_FEATURES
 
         ref_df = pd.read_parquet(REFERENCE_PARQUET)
         cur_df = pd.read_parquet(PRODUCTION_PARQUET)

@@ -1,8 +1,7 @@
-"""Train the fraud detection XGBoost model."""
-
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import logging
 import os
@@ -23,18 +22,18 @@ from mlflow.models import infer_signature
 from mlflow.tracking import MlflowClient
 from xgboost import XGBClassifier
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from model.metrics import evaluate_model, find_optimal_threshold
-from model.plots import (
+from model.utils.metrics import evaluate_model, find_optimal_threshold
+from model.utils.plots import (
     save_confusion_matrix_plot,
     save_feature_importance_plot,
     save_pr_curve_plot,
     save_roc_curve_plot,
     save_threshold_analysis_plot,
 )
-from model.selected_features import SELECTED_FEATURES
-from model.tuning import run_optuna_study
+from model.utils.selected_features import SELECTED_FEATURES
+from model.utils.tuning import run_optuna_study
 from offline_features.feature_selection import select_features
 from offline_features.featurizer import TransactionFeaturizer
 from offline_features.imbalance_strategies import compute_scale_pos_weight
@@ -45,53 +44,14 @@ logger = logging.getLogger(__name__)
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the fraud detection model.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
-    parser.add_argument(
-        "--output-dir",
-        type=str,
-        default="artifacts/model",
-        help="Directory to save training artifacts.",
-    )
+    parser.add_argument("--output-dir", type=str, default="artifacts/model", help="Directory to save train artifacts.")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of rows.")
-    parser.add_argument(
-        "--no-mlflow",
-        action="store_true",
-        help="Disable MLflow tracking.",
-    )
-    parser.add_argument(
-        "--tune",
-        action="store_true",
-        help="Run Optuna hyperparameter tuning.",
-    )
-    parser.add_argument(
-        "--n-trials",
-        type=int,
-        default=30,
-        help="Number of Optuna trials to run.",
-    )
-    parser.add_argument(
-        "--optuna-timeout",
-        type=int,
-        default=None,
-        help="Optional Optuna timeout in seconds.",
-    )
-    parser.add_argument(
-        "--cost-fn",
-        type=float,
-        default=100.0,
-        help="Cost of a false negative (missed fraud).",
-    )
-    parser.add_argument(
-        "--cost-fp",
-        type=float,
-        default=5.0,
-        help="Cost of a false positive (blocked legitimate).",
-    )
-    parser.add_argument(
-        "--threshold",
-        type=float,
-        default=None,
-        help="Fixed classification threshold override.",
-    )
+    parser.add_argument("--tune", action="store_true", help="Run Optuna hyperparameter tuning.")
+    parser.add_argument("--n-trials", type=int, default=30, help="Number of Optuna trials to run.")
+    parser.add_argument("--optuna-timeout", type=int, default=None, help="Optional Optuna timeout in seconds.")
+    parser.add_argument("--cost-fn", type=float, default=100.0, help="Cost of a false negative (missed fraud).")
+    parser.add_argument("--cost-fp", type=float, default=5.0, help="Cost of a false positive (blocked legitimate).")
+    parser.add_argument("--threshold", type=float, default=None, help="Fixed classification threshold override.")
     return parser.parse_args()
 
 
@@ -128,10 +88,7 @@ def load_transactions(limit: int | None) -> pd.DataFrame:
 
 
 def build_features(
-    df: pd.DataFrame,
-    y: pd.Series,
-    output_dir: Path,
-    seed: int,
+    df: pd.DataFrame, y: pd.Series, output_dir: Path, seed: int
 ) -> tuple[pd.DataFrame, TransactionFeaturizer]:
     featurizer = TransactionFeaturizer(encoders_dir=output_dir)
     X_full = featurizer.fit_transform(df, y)
@@ -182,12 +139,7 @@ def train_model(
             "early_stopping_rounds": 20,
         }
     )
-    model.fit(
-        X_train,
-        y_train,
-        eval_set=[(X_val, y_val)],
-        verbose=False,
-    )
+    model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
     return model
 
 
@@ -220,11 +172,7 @@ def save_metadata(
     return metadata_path
 
 
-def update_metadata_with_mlflow(
-    metadata_path: Path,
-    run_id: str,
-    experiment_name: str,
-) -> None:
+def update_metadata_with_mlflow(metadata_path: Path, run_id: str, experiment_name: str) -> None:
     with metadata_path.open("r", encoding="utf-8") as handle:
         metadata = json.load(handle)
     metadata["mlflow_run_id"] = run_id
@@ -233,18 +181,9 @@ def update_metadata_with_mlflow(
         json.dump(metadata, handle, indent=2)
 
 
-def log_summary(
-    y_full: pd.Series,
-    split_sizes: dict[str, int],
-    params: dict[str, object],
-    output_dir: Path,
-) -> None:
+def log_summary(y_full: pd.Series, split_sizes: dict[str, int], params: dict[str, object], output_dir: Path) -> None:
     counts = y_full.value_counts().to_dict()
-    logger.info(
-        "Class distribution — legitimate: %d, fraud: %d",
-        counts.get(0, 0),
-        counts.get(1, 0),
-    )
+    logger.info("Class distribution — legitimate: %d, fraud: %d", counts.get(0, 0), counts.get(1, 0))
     logger.info(
         "Split sizes — train: %d, validation: %d, test: %d",
         split_sizes["train"],
@@ -272,12 +211,7 @@ def is_tracking_uri_available(tracking_uri: str, timeout_seconds: float = 2.0) -
         return False
 
 
-def start_mlflow_run(
-    disable_mlflow: bool,
-) -> tuple[mlflow.ActiveRun | None, str | None, str | None]:
-    if disable_mlflow:
-        raise RuntimeError("MLflow tracking is required for model registration.")
-
+def start_mlflow_run() -> tuple[mlflow.ActiveRun, str, str]:
     try:
         tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
         experiment_name = os.getenv("MLFLOW_EXPERIMENT_NAME", "fraud-detection-v1")
@@ -315,7 +249,6 @@ def start_mlflow_run(
 
 def log_mlflow_outputs(
     model: XGBClassifier,
-    X_val: pd.DataFrame,
     X_full: pd.DataFrame,
     y_train: pd.Series,
     output_dir: Path,
@@ -362,12 +295,7 @@ def log_mlflow_outputs(
     n_total = int(len(y_train))
     n_fraud = int(y_train.sum())
     class_ratio = float(n_fraud / n_total) if n_total else 0.0
-    mlflow.log_metrics(
-        {
-            "best_iteration": float(best_iteration_value),
-            "class_ratio": class_ratio,
-        }
-    )
+    mlflow.log_metrics({"best_iteration": float(best_iteration_value), "class_ratio": class_ratio})
 
     if tuning_summary is not None and tuning_best_params is not None:
         mlflow.log_metrics(
@@ -408,17 +336,14 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     np.random.seed(args.seed)
 
-    if args.tune:
-        try:
-            import optuna  # noqa: F401
-        except ImportError as exc:
-            raise SystemExit("Optuna is required for --tune. Install with: uv sync --group model") from exc
+    if args.tune and importlib.util.find_spec("optuna") is None:
+        raise SystemExit("Optuna is required for --tune. Install with: uv sync --group model")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        mlflow_run, tracking_uri, _ = start_mlflow_run(args.no_mlflow)
+        mlflow_run, tracking_uri, _ = start_mlflow_run()
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
 
@@ -449,10 +374,7 @@ def main() -> None:
         "tuning_best_params": None,
         "tuning_best_pr_auc_val": None,
     }
-    evaluation_metadata: dict[str, object] = {
-        "evaluation_results": None,
-        "optimal_threshold": None,
-    }
+    evaluation_metadata: dict[str, object] = {"evaluation_results": None, "optimal_threshold": None}
     tuning_summary: dict[str, float] | None = None
     tuning_best_params: dict[str, object] | None = None
     params = {
@@ -499,15 +421,7 @@ def main() -> None:
         logger.info("Optuna best params: %s", tuning_best_params)
         logger.info("Optuna best PR-AUC: %.6f", tuning_summary["best_pr_auc_val"])
 
-    model = train_model(
-        X_train,
-        y_train,
-        X_val,
-        y_val,
-        scale_pos_weight,
-        args.seed,
-        params,
-    )
+    model = train_model(X_train, y_train, X_val, y_val, scale_pos_weight, args.seed, params)
 
     val_proba = model.predict_proba(X_val)[:, 1]
     thresholds = np.round(np.arange(0.1, 0.91, 0.01), 2)
@@ -529,24 +443,13 @@ def main() -> None:
         cost_false_negative=args.cost_fn,
         cost_false_positive=args.cost_fp,
     )
-    evaluation_metadata = {
-        "evaluation_results": test_metrics,
-        "optimal_threshold": optimal_threshold,
-    }
+    evaluation_metadata = {"evaluation_results": test_metrics, "optimal_threshold": optimal_threshold}
 
     model_path = output_dir / "xgboost_model.joblib"
     joblib.dump(model, model_path)
 
-    split_sizes = {
-        "train": int(len(X_train)),
-        "validation": int(len(X_val)),
-        "test": int(len(X_test)),
-    }
-    params = {
-        **params,
-        "eval_metric": "aucpr",
-        "early_stopping_rounds": 20,
-    }
+    split_sizes = {"train": int(len(X_train)), "validation": int(len(X_val)), "test": int(len(X_test))}
+    params = {**params, "eval_metric": "aucpr", "early_stopping_rounds": 20}
     evaluation_results_path = output_dir / "evaluation_results.json"
     with evaluation_results_path.open("w", encoding="utf-8") as handle:
         json.dump(
@@ -569,11 +472,7 @@ def main() -> None:
     save_confusion_matrix_plot(test_metrics["confusion_matrix"], confusion_path)
     save_roc_curve_plot(y_test.to_numpy(), model.predict_proba(X_test)[:, 1], roc_path)
     save_pr_curve_plot(y_test.to_numpy(), model.predict_proba(X_test)[:, 1], pr_path)
-    save_feature_importance_plot(
-        model,
-        SELECTED_FEATURES,
-        feature_importance_path,
-    )
+    save_feature_importance_plot(model, SELECTED_FEATURES, feature_importance_path)
     save_threshold_analysis_plot(threshold_metrics, optimal_threshold, threshold_path)
     evaluation_artifacts = [
         evaluation_results_path,
@@ -597,7 +496,6 @@ def main() -> None:
     try:
         run_id, experiment_id = log_mlflow_outputs(
             model=model,
-            X_val=X_val,
             X_full=X_full,
             y_train=y_train,
             output_dir=output_dir,
@@ -652,7 +550,7 @@ def main() -> None:
             print(f"MLflow run_id: {run_id}")
             print(f"MLflow run URL: {run_url}")
     except Exception as exc:
-        raise SystemExit(f"MLflow logging failed: {exc}") from exc
+        logger.warning("MLflow logging failed: %s — artifacts saved to %s", exc, output_dir)
     log_summary(y_full, split_sizes, params, output_dir)
     logger.info(
         "Evaluation — F1: %.4f, PR-AUC: %.4f, ROC-AUC: %.4f",
@@ -662,10 +560,7 @@ def main() -> None:
     )
     logger.info("Threshold used: %.2f", test_metrics["threshold"])
     logger.info("Estimated total cost: %.2f", test_metrics["total_cost"])
-    logger.info(
-        "Fraud detected: %.2f%%",
-        test_metrics["fraud_detected_pct"] * 100,
-    )
+    logger.info("Fraud detected: %.2f%%", test_metrics["fraud_detected_pct"] * 100)
     logger.info("Model saved: %s", model_path)
     logger.info("Encoder saved: %s", output_dir / "categorical_encoder.joblib")
     logger.info("Metadata saved: %s", output_dir / "training_metadata.json")

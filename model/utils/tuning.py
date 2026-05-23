@@ -1,10 +1,9 @@
-"""Optuna tuning utilities for the fraud detection model."""
-
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+import pandas as pd
 from sklearn.metrics import average_precision_score
 from xgboost import XGBClassifier
 
@@ -17,10 +16,10 @@ else:
 
 
 def run_optuna_study(
-    X_train,
-    y_train,
-    X_val,
-    y_val,
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    X_val: pd.DataFrame,
+    y_val: pd.Series,
     scale_pos_weight: float,
     n_trials: int,
     *,
@@ -29,7 +28,6 @@ def run_optuna_study(
     mlflow_enabled: bool,
     tuning_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Run an Optuna study and return the best hyperparameters."""
     import optuna
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -57,16 +55,14 @@ def run_optuna_study(
 
 def build_optuna_objective(
     *,
-    X_train,
-    y_train,
-    X_val,
-    y_val,
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    X_val: pd.DataFrame,
+    y_val: pd.Series,
     scale_pos_weight: float,
     seed: int,
     mlflow_enabled: bool,
 ) -> Callable[[TrialType], float]:
-    """Build the Optuna objective for PR-AUC validation."""
-
     def objective(trial: TrialType) -> float:
         params = {
             "n_estimators": trial.suggest_int("n_estimators", 100, 600),
@@ -78,22 +74,13 @@ def build_optuna_objective(
             "gamma": trial.suggest_float("gamma", 0.0, 5.0),
             "reg_alpha": trial.suggest_float("reg_alpha", 1e-4, 10.0, log=True),
             "reg_lambda": trial.suggest_float("reg_lambda", 1e-4, 10.0, log=True),
-            "scale_pos_weight": trial.suggest_float(
-                "scale_pos_weight",
-                scale_pos_weight * 0.5,
-                scale_pos_weight * 2.0,
-            ),
+            "scale_pos_weight": trial.suggest_float("scale_pos_weight", scale_pos_weight * 0.5, scale_pos_weight * 2.0),
             "eval_metric": "aucpr",
             "random_state": seed,
             "early_stopping_rounds": 20,
         }
         model = XGBClassifier(**params)
-        model.fit(
-            X_train,
-            y_train,
-            eval_set=[(X_val, y_val)],
-            verbose=False,
-        )
+        model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
         proba = model.predict_proba(X_val)[:, 1]
         pr_auc_val = float(average_precision_score(y_val, proba))
 

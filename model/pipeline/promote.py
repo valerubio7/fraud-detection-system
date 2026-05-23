@@ -10,7 +10,7 @@ from pathlib import Path
 import psycopg2
 from mlflow.tracking import MlflowClient
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
 @dataclass
@@ -23,19 +23,14 @@ class PromotionResult:
 
 
 def promote_to_production(model_name: str, model_version: str) -> PromotionResult:
-    """Promote a model version from Staging to Production."""
     client = MlflowClient(tracking_uri=os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
 
     mv, run_id = _verify_staging_version(client, model_name, model_version)
     run_metrics, run_params, run_start = _fetch_run_metadata(client, run_id)
 
     promoted_at = datetime.now(UTC)
-    training_data_from = _parse_timestamp_with_fallback(
-        run_params.get("training_data_from"), run_start
-    )
-    training_data_to = _parse_timestamp_with_fallback(
-        run_params.get("training_data_to"), promoted_at
-    )
+    training_data_from = _parse_timestamp_with_fallback(run_params.get("training_data_from"), run_start)
+    training_data_to = _parse_timestamp_with_fallback(run_params.get("training_data_to"), promoted_at)
 
     deployment_id = _record_deployment_in_db(
         run_id=run_id,
@@ -60,9 +55,7 @@ def promote_to_production(model_name: str, model_version: str) -> PromotionResul
     return result
 
 
-def _verify_staging_version(
-    client: MlflowClient, model_name: str, model_version: str
-) -> tuple[object, str]:
+def _verify_staging_version(client: MlflowClient, model_name: str, model_version: str) -> tuple[object, str]:
     print(f"Checking model {model_name} version {model_version} in MLflow...")
     try:
         mv = client.get_model_version(model_name, model_version)
@@ -71,10 +64,7 @@ def _verify_staging_version(
         sys.exit(1)
 
     if mv.current_stage != "Staging":
-        print(
-            f"Error: Model {model_name} v{model_version} is in stage "
-            f"'{mv.current_stage}', expected 'Staging'."
-        )
+        print(f"Error: Model {model_name} v{model_version} is in stage '{mv.current_stage}', expected 'Staging'.")
         sys.exit(1)
 
     return mv, mv.run_id
@@ -106,17 +96,12 @@ def _record_deployment_in_db(
     )
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id FROM public.model_deployments WHERE mlflow_run_id = %s", (run_id,)
-            )
+            cur.execute("SELECT id FROM public.model_deployments WHERE mlflow_run_id = %s", (run_id,))
             row = cur.fetchone()
 
             if row is not None:
                 deployment_id = row[0]
-                print(
-                    f"Deployment record already exists for run {run_id} "
-                    f"(id={deployment_id}), reusing."
-                )
+                print(f"Deployment record already exists for run {run_id} (id={deployment_id}), reusing.")
             else:
                 cur.execute(
                     """
@@ -132,10 +117,10 @@ def _record_deployment_in_db(
                         model_version,
                         run_id,
                         promoted_at,
-                        metrics.get("f1_score"),
-                        metrics.get("precision"),
-                        metrics.get("recall"),
-                        metrics.get("auc_roc"),
+                        metrics.get("test_f1_score"),
+                        metrics.get("test_precision"),
+                        metrics.get("test_recall"),
+                        metrics.get("test_roc_auc"),
                         training_data_from,
                         training_data_to,
                     ),

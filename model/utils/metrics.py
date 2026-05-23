@@ -13,11 +13,7 @@ from sklearn.metrics import (
 )
 
 
-def compute_threshold_metrics(
-    y_true: np.ndarray,
-    proba: np.ndarray,
-    thresholds: np.ndarray,
-) -> dict[str, list[float]]:
+def compute_threshold_metrics(y_true: np.ndarray, proba: np.ndarray, thresholds: np.ndarray) -> dict[str, list[float]]:
     metrics: dict[str, list[float]] = {"thresholds": [], "precision": [], "recall": [], "f1": []}
     for threshold in thresholds:
         preds = (proba >= threshold).astype(int)
