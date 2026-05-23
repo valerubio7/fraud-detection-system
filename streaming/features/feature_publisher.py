@@ -1,13 +1,10 @@
-from __future__ import annotations
-
 from dataclasses import asdict
 from datetime import UTC
 from typing import Any
 
+from streaming.features.feature_types import HistoricalFeatures, WindowFeatures
 from streaming.models import Transaction
 from streaming.publisher import AvroPublisher
-
-from .feature_types import HistoricalFeatures, WindowFeatures
 
 
 class FeaturePublisher(AvroPublisher):

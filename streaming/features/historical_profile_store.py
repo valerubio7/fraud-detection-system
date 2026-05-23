@@ -1,11 +1,8 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any
 
+from streaming.features.feature_types import HistoricalFeatures
 from streaming.models import Transaction
-
-from .feature_types import HistoricalFeatures
 
 
 @dataclass

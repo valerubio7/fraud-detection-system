@@ -1,8 +1,7 @@
 import pytest
 
 from streaming.features.historical_profile_store import HistoricalProfileStore
-
-from .conftest import make_transaction
+from tests.unit.conftest import make_transaction
 
 
 class TestHistoricalProfileStoreNewUser:

@@ -3,8 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from streaming.features.sliding_window_store import SlidingWindowStore
-
-from .conftest import make_transaction
+from tests.unit.conftest import make_transaction
 
 
 class TestSlidingWindowStoreNewUser:

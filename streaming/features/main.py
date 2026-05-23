@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import os
 import signal
@@ -7,12 +5,12 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from .feature_publisher import FeaturePublisher
-from .historical_profile_store import HistoricalProfileStore
-from .sliding_window_store import SEVEN_DAYS_SECONDS, SlidingWindowStore
-from .transaction_consumer import TransactionConsumer
-from .transaction_store import TransactionStore
-from .user_store import UserStore
+from streaming.features.feature_publisher import FeaturePublisher
+from streaming.features.historical_profile_store import HistoricalProfileStore
+from streaming.features.sliding_window_store import SEVEN_DAYS_SECONDS, SlidingWindowStore
+from streaming.features.transaction_consumer import TransactionConsumer
+from streaming.features.transaction_store import TransactionStore
+from streaming.features.user_store import UserStore
 
 logger = logging.getLogger(__name__)
 

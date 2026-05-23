@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 import itertools
 import logging
@@ -12,9 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from streaming.models import Transaction
-
-from .generator import FraudPatternGenerator, LegitimateTransactionGenerator, UserProfile
-from .transaction_producer import TransactionProducer
+from streaming.producer.generator import FraudPatternGenerator, LegitimateTransactionGenerator, UserProfile
+from streaming.producer.transaction_producer import TransactionProducer
 
 logger = logging.getLogger(__name__)
 

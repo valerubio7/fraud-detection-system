@@ -1,11 +1,8 @@
-from __future__ import annotations
-
 from collections import deque
 from datetime import datetime
 
+from streaming.features.feature_types import WindowFeatures
 from streaming.models import Transaction
-
-from .feature_types import WindowFeatures
 
 ONE_HOUR_SECONDS = 3600
 TWENTY_FOUR_HOURS_SECONDS = 24 * ONE_HOUR_SECONDS
