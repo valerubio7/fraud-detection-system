@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
-ARG SERVICE_GROUP=producer
-ARG SERVICE_CMD=ingestion.producer.main
+ARG SERVICE_GROUP
+ARG SERVICE_CMD
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -18,7 +18,7 @@ COPY pyproject.toml uv.lock ./
 
 RUN uv sync --frozen --no-dev --no-install-project --group ${SERVICE_GROUP}
 
-COPY ingestion ./ingestion
+COPY streaming ./streaming
 
 RUN groupadd --system app && useradd --system --gid app --create-home app && chown -R app:app /app
 

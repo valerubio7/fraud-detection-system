@@ -17,8 +17,6 @@ MAX_WINDOW_TRANSACTIONS = 500
 
 
 class UserStore:
-    """Persist and retrieve user feature state in Redis."""
-
     def __init__(
         self,
         host: str,
@@ -49,8 +47,6 @@ class UserStore:
 
     @property
     def is_available(self) -> bool:
-        """Return True when Redis is connected and operational."""
-
         return self._is_available
 
     def save_user_state(
@@ -59,8 +55,6 @@ class UserStore:
         transactions: list[Transaction],
         historical_profile: dict[str, Any],
     ) -> None:
-        """Persist the latest user state to Redis."""
-
         if not self._is_available or self._client is None:
             logger.debug("Redis unavailable; skipping save for user %s", user_id)
             return
@@ -73,16 +67,11 @@ class UserStore:
 
         try:
             self._client.set(window_key, json.dumps(window_payload), ex=self._key_ttl_seconds)
-            self._client.set(
-                historical_key,
-                json.dumps(historical_profile),
-                ex=self._key_ttl_seconds,
-            )
+            self._client.set(historical_key, json.dumps(historical_profile), ex=self._key_ttl_seconds)
         except redis.RedisError as exc:
             self._handle_redis_error("save", user_id, exc)
 
     def load_user_window(self, user_id: str) -> list[Transaction]:
-        """Load the cached window transactions for a user."""
         raw = self._get_json(self._window_key(user_id), "load window", user_id)
         if raw is None:
             return []
@@ -100,7 +89,6 @@ class UserStore:
         return transactions
 
     def load_user_historical(self, user_id: str) -> dict[str, Any] | None:
-        """Load the cached historical profile for a user."""
         raw = self._get_json(self._historical_key(user_id), "load historical", user_id)
         if raw is None:
             return None
@@ -127,8 +115,6 @@ class UserStore:
             return None
 
     def close(self) -> None:
-        """Close the Redis connection."""
-
         if self._client is None:
             return
         try:

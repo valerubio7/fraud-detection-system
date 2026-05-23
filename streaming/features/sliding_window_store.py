@@ -1,5 +1,3 @@
-"""In-memory sliding window store for transaction features."""
-
 from __future__ import annotations
 
 from collections import deque
@@ -15,8 +13,6 @@ SEVEN_DAYS_SECONDS = 7 * TWENTY_FOUR_HOURS_SECONDS
 
 
 class SlidingWindowStore:
-    """Maintain per-user transaction windows for feature engineering."""
-
     def __init__(self, max_window_seconds: int = SEVEN_DAYS_SECONDS) -> None:
         if max_window_seconds <= 0:
             raise ValueError("max_window_seconds must be positive")
@@ -24,15 +20,11 @@ class SlidingWindowStore:
         self._history: dict[str, deque[Transaction]] = {}
 
     def add(self, transaction: Transaction) -> None:
-        """Add a transaction to the per-user history and evict old entries."""
-
         history = self._history.setdefault(transaction.user_id, deque())
         history.append(transaction)
         self._evict_old(history, transaction.timestamp)
 
     def compute_features(self, transaction: Transaction) -> WindowFeatures:
-        """Compute sliding window features using history before this transaction."""
-
         history = self._history.get(transaction.user_id)
         if not history:
             return WindowFeatures(
@@ -83,17 +75,10 @@ class SlidingWindowStore:
         )
 
     def get_user_window(self, user_id: str) -> list[Transaction]:
-        """Return a copy of the current window transactions for a user."""
         history = self._history.get(user_id)
         return list(history) if history else []
 
-    def hydrate(
-        self,
-        transactions: list[Transaction],
-        reference_time: datetime,
-        max_window_seconds: int,
-    ) -> None:
-        """Populate the window from a persisted list, discarding stale entries."""
+    def hydrate(self, transactions: list[Transaction], reference_time: datetime, max_window_seconds: int) -> None:
         cutoff = reference_time.timestamp() - max_window_seconds
         valid = sorted(
             (t for t in transactions if cutoff <= t.timestamp.timestamp() <= reference_time.timestamp()),

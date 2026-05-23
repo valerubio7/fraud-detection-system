@@ -157,12 +157,12 @@ services:
     networks:
       - mlops-net
 
-  consumer:
+  features:
     build:
       context: .
       dockerfile: docker/streaming/Dockerfile
       args:
-        SERVICE_GROUP: consumer
+        SERVICE_GROUP: features
         SERVICE_CMD: streaming.features.main
     restart: unless-stopped
     depends_on:

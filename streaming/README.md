@@ -50,11 +50,25 @@ docker compose run --rm producer python -m streaming.producer.main --mode scenar
 | `--num-merchants` | `50` | Cantidad de merchants disponibles |
 
 ### `features/`
-Consume del topic `transactions.raw`, computa features (ventana temporal + perfil histórico) y publica en `transactions.features`. Persiste en TimescaleDB y cachea estado en Redis para hidratación en caliente. Es un servicio long-running, se inicia con:
+Consume del topic `transactions.raw`, computa features (ventana temporal + perfil histórico) y publica en `transactions.features`. Persiste transacciones en TimescaleDB y cachea estado por usuario en Redis para sobrevivir reinicios. Es un servicio long-running:
 
 ```bash
-docker compose up -d consumer
+docker compose up -d zookeeper kafka redis timescaledb
+docker compose up -d features
 ```
+
+Estructura interna:
+
+| Archivo | Responsabilidad |
+|---|---|
+| `feature_types.py` | Dataclasses inmutables `WindowFeatures` e `HistoricalFeatures`. Definen el contrato de salida del cómputo; no tienen lógica. |
+| `sliding_window_store.py` | `SlidingWindowStore` — mantiene en memoria un deque de transacciones por usuario y computa conteos/sumas en ventanas de 1h, 24h y 7d. Evicta automáticamente transacciones fuera de la ventana máxima. |
+| `historical_profile_store.py` | `HistoricalProfileStore` — mantiene en memoria el perfil acumulado del usuario (promedio de monto, países y merchants vistos) y computa features de anomalía como `amount_ratio_vs_user_avg` e `is_country_new`. |
+| `transaction_consumer.py` | `TransactionConsumer` — consumer Kafka con deserialización Avro, commit manual por mensaje y retry queue de un intento antes de dead-letter. |
+| `feature_publisher.py` | `FeaturePublisher` — extiende `AvroPublisher` y serializa la transacción original junto con las features computadas en el schema `transaction_features.avsc`. |
+| `user_store.py` | `UserStore` (Redis) — persiste y recupera el estado en memoria de cada usuario. Se lee **una sola vez por usuario** al arrancar (hidratación en caliente); se escribe en cada transacción. Degradación elegante: si Redis no está disponible el servicio continúa sin persistencia de estado. |
+| `transaction_store.py` | `TransactionStore` (TimescaleDB) — inserta cada transacción en la hypertable `public.transactions` con `ON CONFLICT DO NOTHING`. Solo escribe; nunca lee. Los campos `is_fraud`, `model_score` y `latency_ms` quedan en `NULL` hasta que el servicio `inference` los complete. Degradación elegante si TimescaleDB no está disponible. |
+| `main.py` | Orquesta el loop principal: consume, hidrata estado si es usuario nuevo, computa features, persiste en Redis y TimescaleDB, publica en Kafka. Maneja señales `SIGINT`/`SIGTERM` para shutdown limpio. |
 
 ### `inference/`
 Consume del topic `transactions.features`, llama a la API FastAPI de inferencia, publica resultados en `transactions.predictions` y alertas de fraude en `fraud.alerts`. Incluye circuit breaker para proteger la API. Servicio long-running:

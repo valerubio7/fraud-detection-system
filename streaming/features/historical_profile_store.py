@@ -1,5 +1,3 @@
-"""Historical behavior store for long-term user features."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,14 +17,10 @@ class _UserProfile:
 
 
 class HistoricalProfileStore:
-    """Maintain historical aggregates per user for feature engineering."""
-
     def __init__(self) -> None:
         self._profiles: dict[str, _UserProfile] = {}
 
     def compute_features(self, transaction: Transaction) -> HistoricalFeatures:
-        """Compute historical features using state before this transaction."""
-
         profile = self._profiles.get(transaction.user_id)
         if profile is None or profile.amount_count == 0:
             ratio = 1.0
@@ -50,8 +44,6 @@ class HistoricalProfileStore:
         )
 
     def update(self, transaction: Transaction) -> None:
-        """Update the historical aggregates with this transaction."""
-
         profile = self._profiles.get(transaction.user_id)
         if profile is None:
             profile = _UserProfile(
@@ -68,7 +60,6 @@ class HistoricalProfileStore:
         profile.merchants_seen.add(transaction.merchant_id)
 
     def to_snapshot(self, user_id: str) -> dict[str, Any]:
-        """Return a JSON-serializable snapshot of the historical profile."""
         profile = self._profiles.get(user_id)
         if profile is None:
             return {
@@ -85,7 +76,6 @@ class HistoricalProfileStore:
         }
 
     def hydrate(self, user_id: str, raw_profile: dict[str, Any]) -> None:
-        """Restore a historical profile from a raw dict (e.g., loaded from Redis)."""
         countries_raw = raw_profile.get("countries_seen", [])
         merchants_raw = raw_profile.get("merchants_seen", [])
         self._profiles[user_id] = _UserProfile(

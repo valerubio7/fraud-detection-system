@@ -1,5 +1,3 @@
-"""Entry point for the transaction consumer."""
-
 from __future__ import annotations
 
 import logging
@@ -22,10 +20,7 @@ logger = logging.getLogger(__name__)
 def configure_logging() -> None:
     level_name = os.getenv("LOG_LEVEL", "INFO").upper()
     level = logging.getLevelNamesMapping().get(level_name, logging.INFO)
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    logging.basicConfig(level=level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 def install_signal_handlers(stop_event: threading.Event) -> None:
@@ -45,7 +40,6 @@ def hydrate_user_state(
     user_store: UserStore,
     max_window_seconds: int,
 ) -> None:
-    """Load cached state from Redis into in-memory stores."""
     window_transactions = user_store.load_user_window(user_id)
     if window_transactions:
         window_store.hydrate(window_transactions, reference_time, max_window_seconds)
@@ -67,10 +61,7 @@ def main() -> None:
     )
     window_store = SlidingWindowStore(max_window_seconds=window_max_seconds)
     historical_store = HistoricalProfileStore()
-    user_store = UserStore(
-        host=os.getenv("REDIS_HOST", "redis"),
-        port=int(os.getenv("REDIS_PORT", "6379")),
-    )
+    user_store = UserStore(host=os.getenv("REDIS_HOST", "redis"), port=int(os.getenv("REDIS_PORT", "6379")))
     feature_publisher = FeaturePublisher(
         broker_url=os.getenv("KAFKA_BROKER_URL", "kafka:29092"),
         topic=os.getenv("KAFKA_TOPICS_FEATURES", "transactions.features"),
@@ -104,11 +95,7 @@ def main() -> None:
                         window_max_seconds,
                     )
                 initialized_users.add(transaction.user_id)
-            logger.debug(
-                "Consumed transaction %s for user %s",
-                transaction.transaction_id,
-                transaction.user_id,
-            )
+            logger.debug("Consumed transaction %s for user %s", transaction.transaction_id, transaction.user_id)
             window_features = window_store.compute_features(transaction)
             historical_features = historical_store.compute_features(transaction)
             window_store.add(transaction)
@@ -124,17 +111,9 @@ def main() -> None:
             try:
                 feature_publisher.publish(transaction, window_features, historical_features)
             except Exception as exc:
-                logger.error(
-                    "Failed to publish features for %s: %s",
-                    transaction.transaction_id,
-                    exc,
-                )
+                logger.error("Failed to publish features for %s: %s", transaction.transaction_id, exc)
             logger.debug("Computed window features for %s: %s", transaction.transaction_id, window_features)
-            logger.debug(
-                "Computed historical features for %s: %s",
-                transaction.transaction_id,
-                historical_features,
-            )
+            logger.debug("Computed historical features for %s: %s", transaction.transaction_id, historical_features)
             consumer.commit()
     finally:
         feature_publisher.close()

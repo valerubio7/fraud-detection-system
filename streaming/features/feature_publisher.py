@@ -11,8 +11,6 @@ from .feature_types import HistoricalFeatures, WindowFeatures
 
 
 class FeaturePublisher(AvroPublisher):
-    """Publish enriched transaction features to Kafka using Avro serialization."""
-
     def __init__(
         self,
         broker_url: str,
@@ -38,15 +36,11 @@ class FeaturePublisher(AvroPublisher):
         window_features: WindowFeatures,
         historical_features: HistoricalFeatures,
     ) -> None:
-        """Publish a transaction enriched with calculated features."""
         payload = self._build_payload(transaction, window_features, historical_features)
         self._publish(transaction.transaction_id, self._serialize_avro(payload))
 
     @staticmethod
-    def _flatten_features(
-        window_features: WindowFeatures,
-        historical_features: HistoricalFeatures,
-    ) -> dict[str, float]:
+    def _flatten_features(window_features: WindowFeatures, historical_features: HistoricalFeatures) -> dict[str, float]:
         return {
             **{k: float(v) for k, v in asdict(window_features).items()},
             **{k: float(v) for k, v in asdict(historical_features).items()},

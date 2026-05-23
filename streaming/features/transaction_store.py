@@ -1,5 +1,3 @@
-"""TimescaleDB store for processed transactions."""
-
 from __future__ import annotations
 
 import logging
@@ -17,8 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 class TransactionStore:
-    """Insert processed transactions into TimescaleDB."""
-
     def __init__(
         self,
         host: str,
@@ -52,18 +48,11 @@ class TransactionStore:
 
     @property
     def is_available(self) -> bool:
-        """Return True when the connection pool is available."""
-
         return self._is_available
 
     def write(self, transaction: Transaction) -> None:
-        """Insert a transaction row into TimescaleDB."""
-
         if not self._is_available or self._pool is None:
-            logger.debug(
-                "TimescaleDB unavailable; skipping insert for %s",
-                transaction.transaction_id,
-            )
+            logger.debug("TimescaleDB unavailable; skipping insert for %s", transaction.transaction_id)
             return
 
         try:
@@ -112,11 +101,7 @@ class TransactionStore:
                 )
             conn.commit()
         except psycopg2.Error as exc:
-            logger.error(
-                "TimescaleDB insert failed for %s: %s",
-                transaction.transaction_id,
-                exc,
-            )
+            logger.error("TimescaleDB insert failed for %s: %s", transaction.transaction_id, exc)
             if conn is not None:
                 conn.rollback()
         finally:
@@ -124,8 +109,6 @@ class TransactionStore:
                 self._pool.putconn(conn)
 
     def close(self) -> None:
-        """Close the connection pool."""
-
         if self._pool is None:
             return
         try:
