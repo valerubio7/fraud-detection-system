@@ -1881,16 +1881,27 @@ serving = [
 ]
 testing = [
     { name = "apache-airflow" },
+    { name = "asyncpg" },
+    { name = "confluent-kafka" },
     { name = "evidently" },
     { name = "fastapi" },
+    { name = "fastavro" },
     { name = "httpx" },
+    { name = "imbalanced-learn" },
+    { name = "joblib" },
     { name = "locust" },
+    { name = "mlflow" },
     { name = "numpy" },
+    { name = "pandas" },
+    { name = "psycopg2-binary" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-timeout" },
+    { name = "redis" },
+    { name = "scikit-learn" },
     { name = "testcontainers", extra = ["redis"] },
+    { name = "xgboost" },
 ]
 
 [package.metadata]
@@ -1953,16 +1964,27 @@ serving = [
 ]
 testing = [
     { name = "apache-airflow", specifier = "==2.11.0" },
+    { name = "asyncpg", specifier = "==0.31.0" },
+    { name = "confluent-kafka", specifier = "==2.14.0" },
     { name = "evidently", specifier = "==0.4.36" },
     { name = "fastapi", specifier = "==0.136.0" },
+    { name = "fastavro", specifier = "==1.12.1" },
     { name = "httpx", specifier = "==0.28.1" },
+    { name = "imbalanced-learn", specifier = "==0.14.1" },
+    { name = "joblib", specifier = "==1.5.3" },
     { name = "locust", specifier = "==2.44.0" },
+    { name = "mlflow", specifier = "==2.17.2" },
     { name = "numpy", specifier = "==2.4.4" },
+    { name = "pandas", specifier = "==2.3.3" },
+    { name = "psycopg2-binary", specifier = "==2.9.12" },
     { name = "pytest", specifier = "==8.4.2" },
     { name = "pytest-asyncio", specifier = "==0.26.0" },
     { name = "pytest-cov", specifier = "==5.0.0" },
     { name = "pytest-timeout", specifier = "==2.4.0" },
+    { name = "redis", specifier = "==5.3.1" },
+    { name = "scikit-learn", specifier = "==1.8.0" },
     { name = "testcontainers", extras = ["kafka", "postgres", "redis"], specifier = "==4.13.3" },
+    { name = "xgboost", specifier = "==2.1.4" },
 ]
 
 [[package]]

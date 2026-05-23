@@ -5,12 +5,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
-import mlflow
-import mlflow.tracking
-import mlflow.xgboost
 import numpy as np
 import pandas as pd
-import psycopg2
 import pytest
 from testcontainers.postgres import PostgresContainer
 
@@ -57,6 +53,8 @@ def setup_timescaledb(container: PostgresContainer) -> dict:
         "password": "test_pass",
         "dbname": "test_tsdb",
     }
+    import psycopg2
+
     conn = psycopg2.connect(**conn_params)
     # TimescaleDB DDL (continuous aggregates) requires autocommit.
     conn.autocommit = True
@@ -75,6 +73,8 @@ def setup_postgresql(container: PostgresContainer) -> dict:
         "password": "test_pass",
         "dbname": "test_pg",
     }
+    import psycopg2
+
     conn = psycopg2.connect(**conn_params)
     with conn.cursor() as cur:
         cur.execute(POSTGRESQL_MIGRATION.read_text())
@@ -186,6 +186,8 @@ class TestTrainingPipelineIntegration:
             saved_env = {k: os.environ.get(k) for k in env_overrides}
             os.environ.update(env_overrides)
 
+            import mlflow
+
             mlflow.set_tracking_uri(f"file://{MLFLOW_TRACKING_DIR}")
 
             TestTrainingPipelineIntegration._tsdb_params = tsdb_params
@@ -250,6 +252,10 @@ class TestTrainingPipelineIntegration:
         def mock_select(X, y_s, **kwargs):
             return _make_selection_report(X, SELECTED_FEATURES)
 
+        import mlflow
+        import mlflow.tracking
+        import mlflow.xgboost
+
         with patch("model.pipeline.train.select_features", side_effect=mock_select):
             with mlflow.start_run() as run:
                 X, _ = build_features(df, y, output_dir=output_dir, seed=42)
@@ -274,6 +280,8 @@ class TestTrainingPipelineIntegration:
 
     def test_model_deployments_table_is_writable(self):
         """model_deployments puede recibir un INSERT."""
+        import psycopg2
+
         conn = psycopg2.connect(**self.__class__._pg_params)
         with conn.cursor() as cur:
             cur.execute(

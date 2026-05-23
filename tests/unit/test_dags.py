@@ -169,3 +169,115 @@ class TestValidateDataAvailabilityTask:
         assert result["row_count"] == 5000
         assert "data_from" in result
         assert "data_to" in result
+
+
+def _make_mock_conn(fetchone_result):
+    """Utility: build a mock psycopg2 connection that returns fetchone_result."""
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = fetchone_result
+    mock_conn = MagicMock()
+    mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+    mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+    mock_pg = MagicMock()
+    mock_pg.connect.return_value = mock_conn
+    return mock_pg, mock_conn
+
+
+class TestDataQualityCheckTasks:
+    def _get_task_fn(self, dagbag, task_id):
+        dag = _get_dag(dagbag, "data_quality_check")
+        return dag.get_task(task_id).python_callable
+
+    def test_check_transaction_volume_above_threshold(self, dagbag):
+        fn = self._get_task_fn(dagbag, "check_transaction_volume")
+        mock_pg, _ = _make_mock_conn((50,))
+        with patch.dict(fn.__globals__, {"psycopg2": mock_pg}):
+            result = fn()
+        assert result["transaction_count"] == 50
+        assert result["alert_triggered"] is False
+
+    def test_check_transaction_volume_below_threshold_triggers_alert(self, dagbag):
+        fn = self._get_task_fn(dagbag, "check_transaction_volume")
+        mock_pg, _ = _make_mock_conn((2,))
+        with patch.dict(fn.__globals__, {"psycopg2": mock_pg}):
+            result = fn()
+        assert result["alert_triggered"] is True
+
+    def test_check_prediction_rate_above_threshold(self, dagbag):
+        fn = self._get_task_fn(dagbag, "check_prediction_rate")
+        mock_pg, _ = _make_mock_conn((20,))
+        with patch.dict(fn.__globals__, {"psycopg2": mock_pg}):
+            result = fn()
+        assert result["prediction_count"] == 20
+        assert result["alert_triggered"] is False
+
+    def test_check_prediction_rate_below_threshold_triggers_alert(self, dagbag):
+        fn = self._get_task_fn(dagbag, "check_prediction_rate")
+        mock_pg, _ = _make_mock_conn((1,))
+        with patch.dict(fn.__globals__, {"psycopg2": mock_pg}):
+            result = fn()
+        assert result["alert_triggered"] is True
+
+    def test_check_amount_distribution_insufficient_data(self, dagbag):
+        fn = self._get_task_fn(dagbag, "check_amount_distribution")
+        mock_pg, _ = _make_mock_conn((5, 50.0, 10.0, 10.0, 100.0))
+        with patch.dict(fn.__globals__, {"psycopg2": mock_pg}):
+            result = fn()
+        assert result["status"] == "insufficient_data"
+
+    def test_check_amount_distribution_normal(self, dagbag):
+        fn = self._get_task_fn(dagbag, "check_amount_distribution")
+        mock_pg, _ = _make_mock_conn((200, 50.0, 10.0, 5.0, 5000.0))
+        with patch.dict(fn.__globals__, {"psycopg2": mock_pg}):
+            result = fn()
+        assert result["avg_amount"] == 50.0
+        assert result["alert_triggered"] is False
+
+    def test_check_amount_distribution_anomalous_triggers_alert(self, dagbag):
+        fn = self._get_task_fn(dagbag, "check_amount_distribution")
+        mock_pg, _ = _make_mock_conn((200, 200_000.0, 10.0, 5.0, 500_000.0))
+        with patch.dict(fn.__globals__, {"psycopg2": mock_pg}):
+            result = fn()
+        assert result["alert_triggered"] is True
+
+    def test_summarize_checks_logs_without_error(self, dagbag):
+        fn = self._get_task_fn(dagbag, "summarize_checks")
+        fn(
+            {"transaction_count": 100, "alert_triggered": False},
+            {"prediction_count": 50, "alert_triggered": False},
+            {"avg_amount": 75.0, "alert_triggered": False},
+        )
+
+    def test_summarize_checks_handles_insufficient_data(self, dagbag):
+        fn = self._get_task_fn(dagbag, "summarize_checks")
+        fn(
+            {"transaction_count": 0, "alert_triggered": True},
+            {"prediction_count": 0, "alert_triggered": True},
+            {"status": "insufficient_data"},
+        )
+
+
+class TestValidateAndPromoteModelTasks:
+    def _get_task_fn(self, dagbag, task_id):
+        dag = _get_dag(dagbag, "validate_and_promote_model")
+        return dag.get_task(task_id).python_callable
+
+    def test_compare_with_champion_skips_when_gates_failed(self, dagbag):
+        from airflow.exceptions import AirflowSkipException
+
+        fn = self._get_task_fn(dagbag, "compare_with_champion")
+        with pytest.raises(AirflowSkipException):
+            fn(
+                {"model_name": "FraudModel", "model_version": "5"},
+                {"passed": False},
+            )
+
+    def test_promote_to_production_skips_when_challenger_loses(self, dagbag):
+        from airflow.exceptions import AirflowSkipException
+
+        fn = self._get_task_fn(dagbag, "promote_to_production_task")
+        with pytest.raises(AirflowSkipException):
+            fn(
+                {"model_name": "FraudModel", "model_version": "5"},
+                {"challenger_wins": False, "reason": "Champion is better"},
+            )

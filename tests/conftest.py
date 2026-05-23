@@ -20,6 +20,13 @@ for _mod in [
     "prometheus_fastapi_instrumentator",
     # pandas: importado a nivel de módulo en mlops/evidently/reference.py
     "pandas",
+    # imblearn / xgboost: no instalados en el grupo 'testing'
+    "imblearn",
+    "imblearn.over_sampling",
+    "xgboost",
+    # confluent_kafka / fastavro: necesarios para streaming pero no en testing
+    "confluent_kafka",
+    "fastavro",
 ]:
     if _mod not in sys.modules:
         sys.modules[_mod] = MagicMock()

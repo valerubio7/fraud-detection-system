@@ -139,6 +139,27 @@ class TestPredictEndpoint:
             response = await client.post("/predict", json=payload)
         assert response.status_code == 422
 
+    async def test_predict_returns_cached_result_on_cache_hit(self, mock_model_loader):
+        cached = {
+            "transaction_id": VALID_REQUEST["transaction_id"],
+            "prediction_score": 0.99,
+            "prediction_label": True,
+            "model_version": "3",
+            "latency_ms": 1.0,
+        }
+        app.state.prediction_cache.get.return_value = cached
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/predict", json=VALID_REQUEST)
+        assert response.status_code == 200
+        assert response.json()["prediction_score"] == pytest.approx(0.99)
+        mock_model_loader._model.predict_proba.assert_not_called()
+
+    async def test_predict_503_when_model_not_loaded(self):
+        app.state.model_loader = MagicMock(_model=None)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/predict", json=VALID_REQUEST)
+        assert response.status_code == 503
+
 
 class TestPredictBatchEndpoint:
     async def test_batch_predict_returns_all_predictions(self, mock_model_loader):

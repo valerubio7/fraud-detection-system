@@ -4,7 +4,6 @@ import uuid
 from datetime import UTC, datetime
 
 import fastavro
-import psycopg2
 import pytest
 
 from streaming.features.feature_publisher import FeaturePublisher
@@ -32,6 +31,7 @@ def make_test_transaction(user_id: str = "user_int_test") -> Transaction:
     )
 
 
+@pytest.mark.integration
 class TestTransactionStoreIntegration:
     def test_write_transaction_to_timescaledb(self, timescaledb_container):
         """TransactionStore inserta correctamente una Transaction en la hypertable."""
@@ -46,6 +46,8 @@ class TestTransactionStoreIntegration:
         assert writer.is_available, "TransactionStore debe estar disponible"
 
         writer.write(tx)
+
+        import psycopg2
 
         conn = psycopg2.connect(
             host=timescaledb_container.get_container_host_ip(),
@@ -77,6 +79,8 @@ class TestTransactionStoreIntegration:
         )
         writer.write(tx)
         writer.write(tx)
+
+        import psycopg2
 
         conn = psycopg2.connect(
             host=timescaledb_container.get_container_host_ip(),
@@ -167,6 +171,7 @@ class TestFeaturePipelineKafkaIntegration:
         assert "tx_count_1h" in decoded["features"]
 
 
+@pytest.mark.integration
 class TestUserStoreIntegration:
     def test_save_and_load_user_window(self, redis_container):
         """UserStore guarda y recupera el estado del usuario correctamente."""

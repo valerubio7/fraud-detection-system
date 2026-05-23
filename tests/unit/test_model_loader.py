@@ -46,7 +46,7 @@ class TestPrepareFeatures:
         "distinct_merchants_seen": 7,
     }
 
-    def test_output_shape_is_1x16(self, loader_with_mock_encoder):
+    def test_output_shape_is_1x17(self, loader_with_mock_encoder):
         raw = {
             "amount": 150.0,
             "timestamp": datetime(2025, 1, 15, 14, 30, 0, tzinfo=UTC),
@@ -55,7 +55,7 @@ class TestPrepareFeatures:
             "device_type": "mobile",
         }
         result = loader_with_mock_encoder.prepare_features(raw, self.WINDOW_FEATURES)
-        assert result.shape == (1, 16)
+        assert result.shape == (1, 17)
 
     def test_log_amount_is_correct(self, loader_with_mock_encoder):
         raw = {
@@ -112,8 +112,10 @@ class TestPrepareFeatures:
             "device_type": "mobile",
         }
         result = loader_with_mock_encoder.prepare_features(raw, self.WINDOW_FEATURES)
-        assert result[0, 5] == pytest.approx(3.0)  # tx_count_1h
-        assert result[0, 10] == pytest.approx(600.0)  # seconds_since_last_tx
+        # Layout: log_amount[0], hour[1], weekday[2], mc_enc[3], country_enc[4],
+        #         device_type_enc[5], tx_count_1h[6], ..., seconds_since_last_tx[11]
+        assert result[0, 6] == pytest.approx(3.0)  # tx_count_1h
+        assert result[0, 11] == pytest.approx(600.0)  # seconds_since_last_tx
 
     def test_zero_amount_uses_log1p(self, loader_with_mock_encoder):
         raw = {

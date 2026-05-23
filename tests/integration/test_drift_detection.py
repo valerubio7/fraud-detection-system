@@ -5,7 +5,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import psycopg2
 import pytest
 from testcontainers.postgres import PostgresContainer
 
@@ -111,6 +110,8 @@ class TestDriftReportStoreIntegration:
                 "dbname": "test_pg",
             }
 
+            import psycopg2
+
             conn = psycopg2.connect(**pg_params)
             with conn.cursor() as cur:
                 cur.execute(POSTGRESQL_MIGRATION.read_text())
@@ -174,6 +175,8 @@ class TestDriftReportStoreIntegration:
 
         assert report_id is not None
         assert isinstance(report_id, int)
+
+        import psycopg2
 
         conn = psycopg2.connect(**self.__class__._pg_params)
         with conn.cursor() as cur:

@@ -47,13 +47,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: |
-          uv sync --frozen \
-            --group testing \
-            --group serving \
-            --group consumer \
-            --group inference \
-            --group model
+        run: uv sync --frozen --group testing
 
       - name: Run unit tests with coverage
         run: |

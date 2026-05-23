@@ -5,7 +5,7 @@ Objetivo: procesar >= 10,000 transacciones/minuto (166 msg/s)
 con lag residual < 100 mensajes al finalizar.
 
 Ejecutar con:
-    uv run --group testing pytest tests/load/kafka_throughput.py -v -s -m integration
+    uv run --group testing pytest tests/load/test_kafka_throughput.py -v -s -m integration
 
 Requiere Docker en el entorno de ejecución.
 """

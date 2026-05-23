@@ -6,12 +6,18 @@ import sys
 # them. Remove those stubs here so integration tests import the real packages.
 _STUB_ROOTS = {
     "asyncpg",
+    "confluent_kafka",
+    "fastavro",
+    "imblearn",
     "joblib",
     "mlflow",
     "pandas",
-    "prometheus_fastapi_instrumentator",
+    # prometheus_fastapi_instrumentator is kept as a MagicMock stub — the real
+    # package is not needed for integration tests and removing the stub breaks
+    # serving/app/main.py imports.
     "psycopg2",
     "redis",
+    "xgboost",
 }
 for _mod in list(sys.modules):
     root = _mod.split(".")[0]
@@ -20,7 +26,6 @@ for _mod in list(sys.modules):
 
 from pathlib import Path
 
-import psycopg2
 import pytest
 from testcontainers.kafka import KafkaContainer
 from testcontainers.postgres import PostgresContainer
@@ -44,6 +49,8 @@ def timescaledb_container():
         password="test_pass",
         dbname="test_tsdb",
     ) as tsdb:
+        import psycopg2
+
         conn = psycopg2.connect(
             host=tsdb.get_container_host_ip(),
             port=tsdb.get_exposed_port(5432),
