@@ -1,0 +1,78 @@
+# Git
+.git
+.gitignore
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Development tooling
+.claude/
+.github/
+.pre-commit-config.yaml
+.python-version
+.trivyignore
+
+# Secrets — never in the build context
+.env
+.env.*
+
+# Tests — not needed in production images
+tests/
+
+# Documentation
+docs/
+README.md
+*.md
+
+# Data files
+data/
+*.csv
+*.parquet
+*.feather
+
+# Training artifacts (fetched from MLflow at runtime)
+mlruns/
+artifacts/
+model/
+
+# Compose files and Dockerfiles (not needed inside the image)
+docker/
+docker-compose.yml
+docker-compose.override.yml
+
+# Infrastructure migrations and scripts
+database/
+scripts/
+
+# Monitoring — only the Grafana subdirectory is needed in the image
+monitoring/
+!monitoring/grafana/
+
+# MLOps — only the MLflow init script is copied into the image
+mlops/
+!mlops/mlflow/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+*.pid
