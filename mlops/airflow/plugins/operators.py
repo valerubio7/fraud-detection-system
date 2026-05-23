@@ -1,28 +1,14 @@
-"""Custom Airflow operators para el pipeline de fraud detection MLOps."""
-
 import os
-import sys
 from typing import Any
 
 from airflow.models import BaseOperator
 
-sys.path.insert(0, "/opt/airflow/project")
-
 
 class TimescaleExtractOperator(BaseOperator):
-    """Extrae datos de TimescaleDB (o PostgreSQL) y serializa a Parquet.
-
-    Devuelve la ruta del archivo Parquet como XCom.
-    """
-
     template_fields = ("sql", "output_path")
 
     def __init__(
-        self,
-        sql: str,
-        output_path: str,
-        conn_settings_fn: str = "timescaledb_settings",
-        **kwargs: Any,
+        self, sql: str, output_path: str, conn_settings_fn: str = "timescaledb_settings", **kwargs: Any
     ) -> None:
         super().__init__(**kwargs)
         self.sql = sql
@@ -51,12 +37,6 @@ class TimescaleExtractOperator(BaseOperator):
 
 
 class MLflowRegisterModelOperator(BaseOperator):
-    """Transiciona una versión de modelo a un nuevo stage en MLflow.
-
-    Obtiene el model_version desde XCom del task indicado y devuelve
-    el número de versión como XCom.
-    """
-
     def __init__(
         self,
         model_name: str,
@@ -77,8 +57,7 @@ class MLflowRegisterModelOperator(BaseOperator):
         from mlflow.tracking import MlflowClient
 
         model_version = context["ti"].xcom_pull(
-            task_ids=self.model_version_xcom_task_id,
-            key=self.model_version_xcom_key,
+            task_ids=self.model_version_xcom_task_id, key=self.model_version_xcom_key
         )
         client = MlflowClient(tracking_uri=os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
         client.transition_model_version_stage(
@@ -87,28 +66,13 @@ class MLflowRegisterModelOperator(BaseOperator):
             stage=self.target_stage,
             archive_existing_versions=self.archive_existing,
         )
-        self.log.info(
-            "Model %s v%s transitioned to %s",
-            self.model_name,
-            model_version,
-            self.target_stage,
-        )
+        self.log.info("Model %s v%s transitioned to %s", self.model_name, model_version, self.target_stage)
         return str(model_version)
 
 
 class EvidentlyReportOperator(BaseOperator):
-    """Ejecuta un reporte Evidently DataDrift sobre dos DataFrames Parquet.
-
-    Lee los paths de los Parquet desde XCom de los tasks indicados y devuelve
-    el resultado del análisis como dict.
-    """
-
     def __init__(
-        self,
-        reference_path_xcom_task_id: str,
-        current_path_xcom_task_id: str,
-        columns: list[str],
-        **kwargs: Any,
+        self, reference_path_xcom_task_id: str, current_path_xcom_task_id: str, columns: list[str], **kwargs: Any
     ) -> None:
         super().__init__(**kwargs)
         self.reference_path_xcom_task_id = reference_path_xcom_task_id

@@ -1,7 +1,5 @@
-"""DAG de detección de drift cada 6 horas usando Evidently AI."""
-
+import logging
 import os
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -9,13 +7,12 @@ import psycopg2
 from airflow.decorators import dag, task
 from airflow.exceptions import AirflowSkipException
 from airflow.models.xcom_arg import XComArg
-
-sys.path.insert(0, "/opt/airflow/project")
-
 from operators import EvidentlyReportOperator, TimescaleExtractOperator
 
 from mlops.evidently.reference_data import load_reference_dataset
 from model.utils.selected_features import SELECTED_FEATURES
+
+logger = logging.getLogger(__name__)
 
 DAG_ID = "drift_detection_report"
 ENCODER_ARTIFACT_PATH = "categorical_encoder.joblib"
@@ -89,16 +86,13 @@ def drift_detection_report() -> None:
         }
 
     extract_production = TimescaleExtractOperator(
-        task_id="fetch_production_data",
-        sql=_PRODUCTION_SQL,
-        output_path="/tmp/drift_raw_production.parquet",
+        task_id="fetch_production_data", sql=_PRODUCTION_SQL, output_path="/tmp/drift_raw_production.parquet"
     )
 
     @task
     def featurize_reference(active: dict) -> str:
         ref_df = load_reference_dataset(
-            run_id=active["mlflow_run_id"],
-            tracking_uri=os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"),
+            run_id=active["mlflow_run_id"], tracking_uri=os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
         )
         ref_df[SELECTED_FEATURES].to_parquet(REFERENCE_PARQUET, index=False)
         return REFERENCE_PARQUET
@@ -232,7 +226,7 @@ def drift_detection_report() -> None:
     prod_feat >> run_drift
     model_drift_result = run_model_drift_task(active)
 
-    # Persist both results, luego exportar HTML a MLflow
+    # Persist both results, then export HTML to MLflow
     report_id = save_report_to_postgresql(active, XComArg(run_drift), model_drift_result)
     export_html_reports(active, report_id)
 

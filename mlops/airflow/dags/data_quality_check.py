@@ -1,17 +1,12 @@
-"""DAG horario de calidad de datos del pipeline de streaming."""
-
 import logging
 import os
-import sys
 from datetime import datetime
 
 import psycopg2
 from airflow.decorators import dag, task
 
-sys.path.insert(0, "/opt/airflow/project")
-
 DAG_ID = "data_quality_check"
-_log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _pg_conn():
@@ -140,12 +135,7 @@ def data_quality_check() -> None:
             finally:
                 conn_pg.close()
 
-        return {
-            "avg_amount": avg_val,
-            "std_amount": std_val,
-            "max_amount": max_val,
-            "alert_triggered": alert_triggered,
-        }
+        return {"avg_amount": avg_val, "std_amount": std_val, "max_amount": max_val, "alert_triggered": alert_triggered}
 
     @task
     def summarize_checks(tx_result: dict, pred_result: dict, amount_result: dict) -> None:
@@ -157,11 +147,8 @@ def data_quality_check() -> None:
         else:
             avg_str = f"{amount_result.get('avg_amount', 0.0):.2f}"
 
-        _log.info(
-            "Data quality check — transactions: %d/h, predictions: %d/h, amount_avg: %s",
-            tx_count,
-            pred_count,
-            avg_str,
+        logger.info(
+            "Data quality check — transactions: %d/h, predictions: %d/h, amount_avg: %s", tx_count, pred_count, avg_str
         )
 
     tx = check_transaction_volume()

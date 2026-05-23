@@ -1,15 +1,12 @@
-"""DAG de validación y promoción del modelo de detección de fraude."""
-
 import logging
 import os
-import sys
 from datetime import datetime
 
 from airflow.decorators import dag, task
 from airflow.exceptions import AirflowSkipException
 from airflow.utils.trigger_rule import TriggerRule
 
-sys.path.insert(0, "/opt/airflow/project")
+logger = logging.getLogger(__name__)
 
 DAG_ID = "validate_and_promote_model"
 
@@ -69,10 +66,7 @@ def validate_and_promote_model() -> None:
         from model.pipeline.promote import promote_to_production
 
         result = promote_to_production(model_params["model_name"], model_params["model_version"])
-        return {
-            "deployment_id": result.model_deployment_id,
-            "promoted_at": result.promoted_at,
-        }
+        return {"deployment_id": result.model_deployment_id, "promoted_at": result.promoted_at}
 
     @task(trigger_rule=TriggerRule.ONE_FAILED)
     def archive_rejected_version(model_params: dict, gate_result: dict) -> None:
@@ -82,12 +76,8 @@ def validate_and_promote_model() -> None:
         mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
         client = MlflowClient()
         version = model_params["model_version"]
-        client.transition_model_version_stage(
-            name=model_params["model_name"],
-            version=version,
-            stage="Archived",
-        )
-        logging.warning("Model v%s archived after failing quality gates or champion comparison", version)
+        client.transition_model_version_stage(name=model_params["model_name"], version=version, stage="Archived")
+        logger.warning("Model v%s archived after failing quality gates or champion comparison", version)
 
     data = extract_model_params()
     gates = run_quality_gates_task(data)
