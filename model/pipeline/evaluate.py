@@ -82,10 +82,12 @@ def measure_latency(model: object, X_sample: pd.DataFrame, n_repetitions: int = 
 
 
 def run_quality_gates(model_name: str, model_version: str) -> GateResult:
+    import tempfile
+
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
     client = MlflowClient()
 
-    _, run_metrics, run_params = _get_run_for_model_version(client, model_name, model_version)
+    run_id, run_metrics, run_params = _get_run_for_model_version(client, model_name, model_version)
     optimal_threshold = run_metrics.get("optimal_threshold", 0.5)
     training_data_from = _parse_timestamp(run_params.get("training_data_from"))
     training_data_to = _parse_timestamp(run_params.get("training_data_to"))
@@ -98,8 +100,9 @@ def run_quality_gates(model_name: str, model_version: str) -> GateResult:
     y_test = test_df["is_fraud"].astype(int)
     logger.info("Test set size: %d transactions", len(test_df))
 
-    encoders_dir = os.getenv("MODEL_ARTIFACTS_DIR", "artifacts/model")
-    X_test = compute_features(test_df, encoders_dir)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        client.download_artifacts(run_id, "categorical_encoder.joblib", tmp_dir)
+        X_test = compute_features(test_df, tmp_dir)
     proba = model.predict_proba(X_test)[:, 1]
     preds = (proba >= optimal_threshold).astype(int)
 
@@ -124,6 +127,8 @@ def run_quality_gates(model_name: str, model_version: str) -> GateResult:
 
 
 def compare_challenger_vs_champion(challenger_name: str, challenger_version: str) -> ChampionComparisonResult:
+    import tempfile
+
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
     client = MlflowClient()
 
@@ -146,7 +151,9 @@ def compare_challenger_vs_champion(challenger_name: str, challenger_version: str
     logger.info("Loading challenger model...")
     challenger = load_model(challenger_name, challenger_version)
 
-    _, challenger_metrics, challenger_params = _get_run_for_model_version(client, challenger_name, challenger_version)
+    challenger_run_id, challenger_metrics, challenger_params = _get_run_for_model_version(
+        client, challenger_name, challenger_version
+    )
     challenger_threshold = challenger_metrics.get("optimal_threshold", 0.5)
     training_data_from = _parse_timestamp(challenger_params.get("training_data_from"))
     training_data_to = _parse_timestamp(challenger_params.get("training_data_to"))
@@ -159,8 +166,9 @@ def compare_challenger_vs_champion(challenger_name: str, challenger_version: str
     y_test = test_df["is_fraud"].astype(int)
     logger.info("Test set size: %d transactions", len(test_df))
 
-    encoders_dir = os.getenv("MODEL_ARTIFACTS_DIR", "artifacts/model")
-    X_test = compute_features(test_df, encoders_dir)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        client.download_artifacts(challenger_run_id, "categorical_encoder.joblib", tmp_dir)
+        X_test = compute_features(test_df, tmp_dir)
 
     challenger_proba = challenger.predict_proba(X_test)[:, 1]
     challenger_f1 = float(f1_score(y_test, (challenger_proba >= challenger_threshold).astype(int), zero_division=0))
