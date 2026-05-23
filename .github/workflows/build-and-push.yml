@@ -20,18 +20,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: fastapi
+          - name: serving
             dockerfile: docker/serving/Dockerfile
-            image: fraud-detection-fastapi
-          - name: consumer
+            image: fraud-detection-serving
+          - name: features
             dockerfile: docker/streaming/Dockerfile
-            image: fraud-detection-consumer
+            image: fraud-detection-features
+            build_args: "SERVICE_GROUP=features\nSERVICE_CMD=streaming.features.main"
           - name: inference
             dockerfile: docker/streaming/Dockerfile
             image: fraud-detection-inference
+            build_args: "SERVICE_GROUP=inference\nSERVICE_CMD=streaming.inference.main"
           - name: producer
             dockerfile: docker/streaming/Dockerfile
             image: fraud-detection-producer
+            build_args: "SERVICE_GROUP=producer\nSERVICE_CMD=streaming.producer.main"
           - name: airflow
             dockerfile: docker/airflow/Dockerfile
             image: fraud-detection-airflow
@@ -72,5 +75,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ matrix.build_args }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
