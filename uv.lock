@@ -1844,7 +1844,6 @@ model = [
     { name = "mlflow" },
     { name = "optuna" },
     { name = "psycopg2-binary" },
-    { name = "pydantic-settings" },
     { name = "xgboost" },
 ]
 notebooks = [
@@ -1915,7 +1914,6 @@ model = [
     { name = "mlflow", specifier = "==2.17.2" },
     { name = "optuna", specifier = "==3.6.2" },
     { name = "psycopg2-binary", specifier = "==2.9.12" },
-    { name = "pydantic-settings", specifier = "==2.14.1" },
     { name = "xgboost", specifier = "==2.1.4" },
 ]
 notebooks = [

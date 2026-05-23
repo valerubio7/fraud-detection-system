@@ -1,4 +1,10 @@
 services:
+  model:
+    volumes:
+      - ./model:/app/model
+      - ./offline_features:/app/offline_features
+      - ./artifacts:/app/artifacts
+
   fastapi:
     # Bind-mount API code so edits on host trigger reload without rebuilding the image.
     volumes:

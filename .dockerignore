@@ -49,7 +49,6 @@ data/
 # Training artifacts (fetched from MLflow at runtime)
 mlruns/
 artifacts/
-model/
 
 # Compose files and Dockerfiles (not needed inside the image)
 docker/
