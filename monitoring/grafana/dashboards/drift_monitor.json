@@ -5,14 +5,14 @@
   "schemaVersion": 39,
   "version": 1,
   "refresh": "10m",
-  "time": {"from": "now-7d", "to": "now"},
+  "time": { "from": "now-7d", "to": "now" },
   "panels": [
     {
       "id": 1,
       "title": "Estado del modelo",
       "type": "stat",
-      "gridPos": {"w": 6, "h": 6, "x": 0, "y": 0},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 6, "h": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -22,20 +22,20 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "thresholds"},
+          "color": { "mode": "thresholds" },
           "mappings": [
             {
               "type": "value",
               "options": {
-                "OK": {"color": "green", "text": "OK", "index": 0},
-                "WARNING": {"color": "yellow", "text": "WARNING", "index": 1},
-                "DRIFT": {"color": "red", "text": "DRIFT", "index": 2}
+                "OK": { "color": "green", "text": "OK", "index": 0 },
+                "WARNING": { "color": "yellow", "text": "WARNING", "index": 1 },
+                "DRIFT": { "color": "red", "text": "DRIFT", "index": 2 }
               }
             }
           ],
           "thresholds": {
             "mode": "absolute",
-            "steps": [{"color": "green", "value": null}]
+            "steps": [{ "color": "green", "value": null }]
           }
         },
         "overrides": []
@@ -57,8 +57,8 @@
       "id": 2,
       "title": "Drift Score Global (último reporte)",
       "type": "stat",
-      "gridPos": {"w": 6, "h": 6, "x": 6, "y": 0},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 6, "h": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -69,13 +69,13 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
-          "color": {"mode": "thresholds"},
+          "color": { "mode": "thresholds" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 0.20},
-              {"color": "red", "value": 0.30}
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.2 },
+              { "color": "red", "value": 0.3 }
             ]
           },
           "mappings": []
@@ -99,8 +99,8 @@
       "id": 3,
       "title": "Alertas de drift activas (7 días)",
       "type": "stat",
-      "gridPos": {"w": 6, "h": 6, "x": 12, "y": 0},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 6, "h": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -111,12 +111,12 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": {"mode": "thresholds"},
+          "color": { "mode": "thresholds" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "red", "value": 1}
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
             ]
           },
           "mappings": []
@@ -140,8 +140,8 @@
       "id": 4,
       "title": "Último entrenamiento",
       "type": "stat",
-      "gridPos": {"w": 6, "h": 6, "x": 18, "y": 0},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 6, "h": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -152,7 +152,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "dateTimeAsLocal",
-          "color": {"mode": "fixed", "fixedColor": "blue"},
+          "color": { "mode": "fixed", "fixedColor": "blue" },
           "mappings": []
         },
         "overrides": []
@@ -174,8 +174,8 @@
       "id": 5,
       "title": "Evolución del drift score global",
       "type": "timeseries",
-      "gridPos": {"w": 24, "h": 9, "x": 0, "y": 6},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 24, "h": 9, "x": 0, "y": 6 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -196,15 +196,15 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "transparent", "value": null},
-              {"color": "yellow", "value": 0.20},
-              {"color": "red", "value": 0.30}
+              { "color": "transparent", "value": null },
+              { "color": "yellow", "value": 0.2 },
+              { "color": "red", "value": 0.3 }
             ]
           }
         },
         "overrides": [
           {
-            "matcher": {"id": "byName", "options": "Alert disparado"},
+            "matcher": { "id": "byName", "options": "Alert disparado" },
             "properties": [
               {
                 "id": "custom.drawStyle",
@@ -216,7 +216,7 @@
               },
               {
                 "id": "color",
-                "value": {"mode": "fixed", "fixedColor": "red"}
+                "value": { "mode": "fixed", "fixedColor": "red" }
               },
               {
                 "id": "custom.lineWidth",
@@ -225,40 +225,40 @@
             ]
           },
           {
-            "matcher": {"id": "byName", "options": "Drift Score Global"},
+            "matcher": { "id": "byName", "options": "Drift Score Global" },
             "properties": [
               {
                 "id": "color",
-                "value": {"mode": "fixed", "fixedColor": "blue"}
+                "value": { "mode": "fixed", "fixedColor": "blue" }
               },
               {
                 "id": "custom.thresholdsStyle",
-                "value": {"mode": "line"}
+                "value": { "mode": "line" }
               }
             ]
           }
         ]
       },
       "options": {
-        "tooltip": {"mode": "multi", "sort": "none"},
-        "legend": {"displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"]},
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"] },
         "thresholds": {
           "mode": "absolute",
           "steps": [
-            {"color": "transparent", "value": null},
-            {"color": "yellow", "value": 0.20},
-            {"color": "red", "value": 0.30}
+            { "color": "transparent", "value": null },
+            { "color": "yellow", "value": 0.2 },
+            { "color": "red", "value": 0.3 }
           ]
         },
-        "thresholdsStyle": {"mode": "line"}
+        "thresholdsStyle": { "mode": "line" }
       }
     },
     {
       "id": 6,
       "title": "Drift score por feature (último reporte)",
       "type": "barchart",
-      "gridPos": {"w": 24, "h": 10, "x": 0, "y": 15},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 24, "h": 10, "x": 0, "y": 15 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -269,13 +269,13 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
-          "color": {"mode": "thresholds"},
+          "color": { "mode": "thresholds" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 0.20},
-              {"color": "red", "value": 0.30}
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.2 },
+              { "color": "red", "value": 0.3 }
             ]
           },
           "mappings": [],
@@ -283,7 +283,7 @@
             "fillOpacity": 80,
             "gradientMode": "none",
             "lineWidth": 1,
-            "hideFrom": {"legend": false, "tooltip": false, "viz": false}
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
           }
         },
         "overrides": []
@@ -296,10 +296,10 @@
         "barRadius": 0,
         "fillOpacity": 80,
         "gradientMode": "none",
-        "tooltip": {"mode": "single", "sort": "none"},
-        "legend": {"displayMode": "list", "placement": "bottom", "calcs": []},
+        "tooltip": { "mode": "single", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] },
         "colorByField": "Drift Score",
-        "stacking": {"mode": "none", "group": "A"},
+        "stacking": { "mode": "none", "group": "A" },
         "showValue": "auto",
         "text": {}
       }
@@ -308,8 +308,8 @@
       "id": 7,
       "title": "Historial de alertas de drift",
       "type": "table",
-      "gridPos": {"w": 24, "h": 8, "x": 0, "y": 25},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 24, "h": 8, "x": 0, "y": 25 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -326,7 +326,7 @@
         },
         "overrides": [
           {
-            "matcher": {"id": "byName", "options": "Drift Score"},
+            "matcher": { "id": "byName", "options": "Drift Score" },
             "properties": [
               {
                 "id": "custom.displayMode",
@@ -337,22 +337,22 @@
                 "value": {
                   "mode": "absolute",
                   "steps": [
-                    {"color": "green", "value": null},
-                    {"color": "yellow", "value": 0.20},
-                    {"color": "red", "value": 0.30}
+                    { "color": "green", "value": null },
+                    { "color": "yellow", "value": 0.2 },
+                    { "color": "red", "value": 0.3 }
                   ]
                 }
               }
             ]
           },
           {
-            "matcher": {"id": "byName", "options": "Alerta"},
+            "matcher": { "id": "byName", "options": "Alerta" },
             "properties": [
               {
                 "id": "mappings",
                 "value": [
-                  {"type": "value", "options": {"true": {"color": "red", "text": "⚠ Sí", "index": 0}}},
-                  {"type": "value", "options": {"false": {"color": "green", "text": "✓ No", "index": 1}}}
+                  { "type": "value", "options": { "true": { "color": "red", "text": "⚠ Sí", "index": 0 } } },
+                  { "type": "value", "options": { "false": { "color": "green", "text": "✓ No", "index": 1 } } }
                 ]
               },
               {
@@ -365,8 +365,8 @@
       },
       "options": {
         "showHeader": true,
-        "sortBy": [{"displayName": "Fecha", "desc": true}],
-        "footer": {"show": false, "reducer": ["sum"]}
+        "sortBy": [{ "displayName": "Fecha", "desc": true }],
+        "footer": { "show": false, "reducer": ["sum"] }
       }
     }
   ]

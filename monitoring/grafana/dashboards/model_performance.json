@@ -5,14 +5,14 @@
   "schemaVersion": 39,
   "version": 1,
   "refresh": "5m",
-  "time": {"from": "now-30d", "to": "now"},
+  "time": { "from": "now-30d", "to": "now" },
   "panels": [
     {
       "id": 1,
       "title": "F1 Score (modelo activo)",
       "type": "stat",
-      "gridPos": {"w": 6, "h": 4, "x": 0, "y": 0},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 6, "h": 4, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -23,13 +23,13 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
-          "color": {"mode": "thresholds"},
+          "color": { "mode": "thresholds" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "red", "value": null},
-              {"color": "yellow", "value": 0.85},
-              {"color": "green", "value": 0.90}
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.85 },
+              { "color": "green", "value": 0.9 }
             ]
           },
           "mappings": []
@@ -53,8 +53,8 @@
       "id": 2,
       "title": "AUC-ROC (modelo activo)",
       "type": "stat",
-      "gridPos": {"w": 6, "h": 4, "x": 6, "y": 0},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 6, "h": 4, "x": 6, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -65,13 +65,13 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
-          "color": {"mode": "thresholds"},
+          "color": { "mode": "thresholds" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "red", "value": null},
-              {"color": "yellow", "value": 0.90},
-              {"color": "green", "value": 0.95}
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.9 },
+              { "color": "green", "value": 0.95 }
             ]
           },
           "mappings": []
@@ -95,8 +95,8 @@
       "id": 3,
       "title": "Precisión (modelo activo)",
       "type": "stat",
-      "gridPos": {"w": 6, "h": 4, "x": 12, "y": 0},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 6, "h": 4, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -107,13 +107,13 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
-          "color": {"mode": "thresholds"},
+          "color": { "mode": "thresholds" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "red", "value": null},
-              {"color": "yellow", "value": 0.80},
-              {"color": "green", "value": 0.90}
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.8 },
+              { "color": "green", "value": 0.9 }
             ]
           },
           "mappings": []
@@ -137,8 +137,8 @@
       "id": 4,
       "title": "Recall (modelo activo)",
       "type": "stat",
-      "gridPos": {"w": 6, "h": 4, "x": 18, "y": 0},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 6, "h": 4, "x": 18, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -149,13 +149,13 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
-          "color": {"mode": "thresholds"},
+          "color": { "mode": "thresholds" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "red", "value": null},
-              {"color": "yellow", "value": 0.80},
-              {"color": "green", "value": 0.90}
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.8 },
+              { "color": "green", "value": 0.9 }
             ]
           },
           "mappings": []
@@ -179,8 +179,8 @@
       "id": 5,
       "title": "Latencia P50 / P95 / P99",
       "type": "timeseries",
-      "gridPos": {"w": 24, "h": 9, "x": 0, "y": 4},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 24, "h": 9, "x": 0, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -201,48 +201,44 @@
         },
         "overrides": [
           {
-            "matcher": {"id": "byName", "options": "P99 ms"},
+            "matcher": { "id": "byName", "options": "P99 ms" },
             "properties": [
-              {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}},
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } },
               {
                 "id": "custom.thresholdsStyle",
-                "value": {"mode": "line"}
+                "value": { "mode": "line" }
               }
             ]
           },
           {
-            "matcher": {"id": "byName", "options": "P95 ms"},
-            "properties": [
-              {"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}
-            ]
+            "matcher": { "id": "byName", "options": "P95 ms" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }]
           },
           {
-            "matcher": {"id": "byName", "options": "P50 ms"},
-            "properties": [
-              {"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}
-            ]
+            "matcher": { "id": "byName", "options": "P50 ms" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }]
           }
         ]
       },
       "options": {
-        "tooltip": {"mode": "multi", "sort": "none"},
-        "legend": {"displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"]},
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"] },
         "thresholds": {
           "mode": "absolute",
           "steps": [
-            {"color": "transparent", "value": null},
-            {"color": "red", "value": 50}
+            { "color": "transparent", "value": null },
+            { "color": "red", "value": 50 }
           ]
         },
-        "thresholdsStyle": {"mode": "line+area"}
+        "thresholdsStyle": { "mode": "line+area" }
       }
     },
     {
       "id": 6,
       "title": "Distribución de scores del modelo",
       "type": "histogram",
-      "gridPos": {"w": 12, "h": 9, "x": 0, "y": 13},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 12, "h": 9, "x": 0, "y": 13 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -253,11 +249,11 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": {"mode": "palette-classic"},
+          "color": { "mode": "palette-classic" },
           "custom": {
             "fillOpacity": 80,
             "gradientMode": "none",
-            "hideFrom": {"legend": false, "tooltip": false, "viz": false},
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
             "lineWidth": 1
           }
         },
@@ -268,16 +264,16 @@
         "bucketOffset": 0,
         "fillOpacity": 80,
         "gradientMode": "none",
-        "tooltip": {"mode": "single", "sort": "none"},
-        "legend": {"displayMode": "list", "placement": "bottom"}
+        "tooltip": { "mode": "single", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
       }
     },
     {
       "id": 7,
       "title": "Champion vs. Challenger",
       "type": "table",
-      "gridPos": {"w": 12, "h": 9, "x": 12, "y": 13},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 12, "h": 9, "x": 12, "y": 13 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -294,7 +290,7 @@
         },
         "overrides": [
           {
-            "matcher": {"id": "byName", "options": "F1"},
+            "matcher": { "id": "byName", "options": "F1" },
             "properties": [
               {
                 "id": "custom.displayMode",
@@ -305,16 +301,16 @@
                 "value": {
                   "mode": "absolute",
                   "steps": [
-                    {"color": "red", "value": null},
-                    {"color": "yellow", "value": 0.85},
-                    {"color": "green", "value": 0.90}
+                    { "color": "red", "value": null },
+                    { "color": "yellow", "value": 0.85 },
+                    { "color": "green", "value": 0.9 }
                   ]
                 }
               }
             ]
           },
           {
-            "matcher": {"id": "byName", "options": "AUC-ROC"},
+            "matcher": { "id": "byName", "options": "AUC-ROC" },
             "properties": [
               {
                 "id": "custom.displayMode",
@@ -325,16 +321,16 @@
                 "value": {
                   "mode": "absolute",
                   "steps": [
-                    {"color": "red", "value": null},
-                    {"color": "yellow", "value": 0.90},
-                    {"color": "green", "value": 0.95}
+                    { "color": "red", "value": null },
+                    { "color": "yellow", "value": 0.9 },
+                    { "color": "green", "value": 0.95 }
                   ]
                 }
               }
             ]
           },
           {
-            "matcher": {"id": "byName", "options": "Rol"},
+            "matcher": { "id": "byName", "options": "Rol" },
             "properties": [
               {
                 "id": "custom.width",
@@ -346,8 +342,8 @@
       },
       "options": {
         "showHeader": true,
-        "sortBy": [{"displayName": "Fecha", "desc": true}],
-        "footer": {"show": false, "reducer": ["sum"]}
+        "sortBy": [{ "displayName": "Fecha", "desc": true }],
+        "footer": { "show": false, "reducer": ["sum"] }
       }
     }
   ]

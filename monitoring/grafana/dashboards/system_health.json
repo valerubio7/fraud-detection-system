@@ -5,35 +5,35 @@
   "schemaVersion": 39,
   "version": 1,
   "refresh": "30s",
-  "time": {"from": "now-1h", "to": "now"},
+  "time": { "from": "now-1h", "to": "now" },
   "panels": [
     {
       "id": 1,
       "title": "FastAPI",
       "type": "stat",
-      "gridPos": {"w": 4, "h": 4, "x": 0, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": { "w": 4, "h": 4, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
-          "expr": "up{job=\"fastapi\"}",
+          "expr": "up{job=\"serving\"}",
           "instant": true,
           "legendFormat": ""
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "thresholds"},
+          "color": { "mode": "thresholds" },
           "thresholds": {
             "mode": "absolute",
-            "steps": [{"color": "green", "value": null}]
+            "steps": [{ "color": "green", "value": null }]
           },
           "mappings": [
             {
               "type": "value",
               "options": {
-                "0": {"color": "red", "text": "DOWN", "index": 0},
-                "1": {"color": "green", "text": "UP", "index": 1}
+                "0": { "color": "red", "text": "DOWN", "index": 0 },
+                "1": { "color": "green", "text": "UP", "index": 1 }
               }
             }
           ]
@@ -41,11 +41,7 @@
         "overrides": []
       },
       "options": {
-        "reduceOptions": {
-          "values": false,
-          "calcs": ["lastNotNull"],
-          "fields": ""
-        },
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
         "orientation": "auto",
         "textMode": "auto",
         "colorMode": "background",
@@ -57,8 +53,8 @@
       "id": 2,
       "title": "Request rate",
       "type": "stat",
-      "gridPos": {"w": 6, "h": 4, "x": 4, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": { "w": 6, "h": 4, "x": 4, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
@@ -70,17 +66,13 @@
       "fieldConfig": {
         "defaults": {
           "unit": "reqps",
-          "color": {"mode": "fixed", "fixedColor": "blue"},
+          "color": { "mode": "fixed", "fixedColor": "blue" },
           "mappings": []
         },
         "overrides": []
       },
       "options": {
-        "reduceOptions": {
-          "values": false,
-          "calcs": ["lastNotNull"],
-          "fields": ""
-        },
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
         "orientation": "auto",
         "textMode": "auto",
         "colorMode": "background",
@@ -92,8 +84,8 @@
       "id": 3,
       "title": "Error rate (5xx)",
       "type": "stat",
-      "gridPos": {"w": 6, "h": 4, "x": 10, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": { "w": 6, "h": 4, "x": 10, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
@@ -105,13 +97,13 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
-          "color": {"mode": "thresholds"},
+          "color": { "mode": "thresholds" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 0.01},
-              {"color": "red", "value": 0.05}
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
             ]
           },
           "mappings": []
@@ -119,11 +111,7 @@
         "overrides": []
       },
       "options": {
-        "reduceOptions": {
-          "values": false,
-          "calcs": ["lastNotNull"],
-          "fields": ""
-        },
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
         "orientation": "auto",
         "textMode": "auto",
         "colorMode": "background",
@@ -135,8 +123,8 @@
       "id": 4,
       "title": "Latencia P99 FastAPI",
       "type": "gauge",
-      "gridPos": {"w": 8, "h": 4, "x": 16, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": { "w": 8, "h": 4, "x": 16, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
@@ -149,13 +137,13 @@
         "defaults": {
           "unit": "ms",
           "min": 0,
-          "color": {"mode": "thresholds"},
+          "color": { "mode": "thresholds" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 50},
-              {"color": "red", "value": 200}
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "red", "value": 200 }
             ]
           },
           "mappings": []
@@ -163,11 +151,7 @@
         "overrides": []
       },
       "options": {
-        "reduceOptions": {
-          "values": false,
-          "calcs": ["lastNotNull"],
-          "fields": ""
-        },
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
         "orientation": "auto",
         "textMode": "auto",
         "colorMode": "thresholds",
@@ -179,8 +163,8 @@
       "id": 5,
       "title": "Request rate por endpoint",
       "type": "timeseries",
-      "gridPos": {"w": 12, "h": 9, "x": 0, "y": 4},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": { "w": 12, "h": 9, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
@@ -202,16 +186,16 @@
         "overrides": []
       },
       "options": {
-        "tooltip": {"mode": "multi", "sort": "desc"},
-        "legend": {"displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"]}
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"] }
       }
     },
     {
       "id": 6,
       "title": "Latencia P50 / P95 / P99",
       "type": "timeseries",
-      "gridPos": {"w": 12, "h": 9, "x": 12, "y": 4},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": { "w": 12, "h": 9, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
@@ -242,36 +226,30 @@
         },
         "overrides": [
           {
-            "matcher": {"id": "byName", "options": "P50 ms"},
-            "properties": [
-              {"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}
-            ]
+            "matcher": { "id": "byName", "options": "P50 ms" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }]
           },
           {
-            "matcher": {"id": "byName", "options": "P95 ms"},
-            "properties": [
-              {"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}
-            ]
+            "matcher": { "id": "byName", "options": "P95 ms" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }]
           },
           {
-            "matcher": {"id": "byName", "options": "P99 ms"},
-            "properties": [
-              {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}
-            ]
+            "matcher": { "id": "byName", "options": "P99 ms" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
           }
         ]
       },
       "options": {
-        "tooltip": {"mode": "multi", "sort": "none"},
-        "legend": {"displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"]}
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"] }
       }
     },
     {
       "id": 7,
       "title": "Predicciones (24h)",
       "type": "stat",
-      "gridPos": {"w": 6, "h": 4, "x": 0, "y": 13},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 6, "h": 4, "x": 0, "y": 13 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -282,17 +260,13 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": {"mode": "fixed", "fixedColor": "blue"},
+          "color": { "mode": "fixed", "fixedColor": "blue" },
           "mappings": []
         },
         "overrides": []
       },
       "options": {
-        "reduceOptions": {
-          "values": false,
-          "calcs": ["lastNotNull"],
-          "fields": ""
-        },
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
         "orientation": "auto",
         "textMode": "auto",
         "colorMode": "background",
@@ -304,8 +278,8 @@
       "id": 8,
       "title": "Transacciones (24h)",
       "type": "stat",
-      "gridPos": {"w": 6, "h": 4, "x": 6, "y": 13},
-      "datasource": {"type": "postgres", "uid": "timescaledb"},
+      "gridPos": { "w": 6, "h": 4, "x": 6, "y": 13 },
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
       "targets": [
         {
           "refId": "A",
@@ -316,17 +290,13 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": {"mode": "fixed", "fixedColor": "purple"},
+          "color": { "mode": "fixed", "fixedColor": "purple" },
           "mappings": []
         },
         "overrides": []
       },
       "options": {
-        "reduceOptions": {
-          "values": false,
-          "calcs": ["lastNotNull"],
-          "fields": ""
-        },
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
         "orientation": "auto",
         "textMode": "auto",
         "colorMode": "background",
@@ -338,18 +308,18 @@
       "id": 9,
       "title": "Transacciones vs. Predicciones (última hora)",
       "type": "timeseries",
-      "gridPos": {"w": 12, "h": 4, "x": 12, "y": 13},
-      "datasource": {"type": "datasource", "uid": "-- Mixed --"},
+      "gridPos": { "w": 12, "h": 4, "x": 12, "y": 13 },
+      "datasource": { "type": "datasource", "uid": "-- Mixed --" },
       "targets": [
         {
           "refId": "A",
-          "datasource": {"type": "postgres", "uid": "timescaledb"},
+          "datasource": { "type": "postgres", "uid": "timescaledb" },
           "format": "time_series",
           "rawSql": "SELECT\n  time_bucket('2 minutes', \"timestamp\") AS time,\n  COUNT(*) AS \"Transacciones\"\nFROM transactions\nWHERE $__timeFilter(\"timestamp\")\nGROUP BY 1\nORDER BY 1"
         },
         {
           "refId": "B",
-          "datasource": {"type": "postgres", "uid": "postgresql"},
+          "datasource": { "type": "postgres", "uid": "postgresql" },
           "format": "time_series",
           "rawSql": "SELECT\n  to_timestamp(floor(extract(epoch FROM \"timestamp\") / 120) * 120) AS time,\n  COUNT(*) AS \"Predicciones\"\nFROM predictions_history\nWHERE $__timeFilter(\"timestamp\")\nGROUP BY 1\nORDER BY 1"
         }
@@ -367,35 +337,379 @@
         },
         "overrides": [
           {
-            "matcher": {"id": "byName", "options": "Predicciones"},
-            "properties": [
-              {"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}}
-            ]
+            "matcher": { "id": "byName", "options": "Predicciones" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }]
           },
           {
-            "matcher": {"id": "byName", "options": "Transacciones"},
-            "properties": [
-              {"id": "color", "value": {"mode": "fixed", "fixedColor": "purple"}}
-            ]
+            "matcher": { "id": "byName", "options": "Transacciones" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } }]
           }
         ]
       },
       "options": {
-        "tooltip": {"mode": "multi", "sort": "none"},
-        "legend": {"displayMode": "list", "placement": "bottom", "calcs": []}
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] }
+      }
+    },
+
+    {
+      "id": 10,
+      "title": "PostgreSQL — Conexiones activas",
+      "type": "stat",
+      "gridPos": { "w": 6, "h": 4, "x": 0, "y": 17 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(pg_stat_activity_count{job=\"postgresql\", state=\"active\"})",
+          "instant": true,
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 9 }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
       }
     },
     {
-      "id": 10,
-      "title": "Nota: Kafka consumer lag",
-      "type": "text",
-      "gridPos": {"w": 24, "h": 3, "x": 0, "y": 17},
-      "options": {
-        "mode": "markdown",
-        "content": "> ⚠️ **Kafka consumer lag** no está disponible en esta vista porque requiere un kafka-exporter separado (no incluido en el stack actual). Para monitorearlo, agregar `prom/kafka-exporter:latest` al `docker-compose.yml` apuntando al broker `kafka:9092`.",
-        "code": {"language": "plaintext", "showLineNumbers": false, "showMiniMap": false}
+      "id": 11,
+      "title": "PostgreSQL — Tamaño DB",
+      "type": "stat",
+      "gridPos": { "w": 6, "h": 4, "x": 6, "y": 17 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "pg_database_size_bytes{job=\"postgresql\", datname=\"fraud_metadata\"}",
+          "instant": true,
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "mappings": []
+        },
+        "overrides": []
       },
-      "fieldConfig": {"defaults": {}, "overrides": []}
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 12,
+      "title": "TimescaleDB — Conexiones activas",
+      "type": "stat",
+      "gridPos": { "w": 6, "h": 4, "x": 12, "y": 17 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(pg_stat_activity_count{job=\"timescaledb\", state=\"active\"})",
+          "instant": true,
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 9 }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 13,
+      "title": "TimescaleDB — Tamaño DB",
+      "type": "stat",
+      "gridPos": { "w": 6, "h": 4, "x": 18, "y": 17 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "pg_database_size_bytes{job=\"timescaledb\", datname=\"fraud_transactions_timeseries\"}",
+          "instant": true,
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": { "mode": "fixed", "fixedColor": "purple" },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 14,
+      "title": "Conexiones por estado — PostgreSQL",
+      "type": "timeseries",
+      "gridPos": { "w": 12, "h": 8, "x": 0, "y": 21 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (state) (pg_stat_activity_count{job=\"postgresql\"})",
+          "legendFormat": "{{state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "drawStyle": "line",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"] }
+      }
+    },
+    {
+      "id": 15,
+      "title": "Conexiones por estado — TimescaleDB",
+      "type": "timeseries",
+      "gridPos": { "w": 12, "h": 8, "x": 12, "y": 21 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (state) (pg_stat_activity_count{job=\"timescaledb\"})",
+          "legendFormat": "{{state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "drawStyle": "line",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"] }
+      }
+    },
+
+    {
+      "id": 16,
+      "title": "Kafka lag — transactions.features",
+      "type": "stat",
+      "gridPos": { "w": 8, "h": 4, "x": 0, "y": 29 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(kafka_consumergroup_lag{topic=\"transactions.features\"})",
+          "instant": true,
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 1000 }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 17,
+      "title": "Kafka lag — transactions.predictions",
+      "type": "stat",
+      "gridPos": { "w": 8, "h": 4, "x": 8, "y": 29 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(kafka_consumergroup_lag{topic=\"transactions.predictions\"})",
+          "instant": true,
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 1000 }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 18,
+      "title": "Kafka lag — transactions.fraud.alerts",
+      "type": "stat",
+      "gridPos": { "w": 8, "h": 4, "x": 16, "y": 29 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(kafka_consumergroup_lag{topic=\"transactions.fraud.alerts\"})",
+          "instant": true,
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 1000 }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "" },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 19,
+      "title": "Kafka — Consumer lag por topic",
+      "type": "timeseries",
+      "gridPos": { "w": 24, "h": 8, "x": 0, "y": 33 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (topic) (kafka_consumergroup_lag{topic=~\"transactions\\\\..+\"})",
+          "legendFormat": "{{topic}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "drawStyle": "line",
+            "spanNulls": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 1000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["mean", "max", "last"] }
+      }
     }
   ]
 }

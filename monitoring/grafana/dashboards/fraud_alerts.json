@@ -5,14 +5,14 @@
   "schemaVersion": 39,
   "version": 1,
   "refresh": "30s",
-  "time": {"from": "now-1h", "to": "now"},
+  "time": { "from": "now-1h", "to": "now" },
   "panels": [
     {
       "id": 1,
       "title": "Tasa de fraude actual",
       "type": "gauge",
-      "gridPos": {"w": 6, "h": 8, "x": 0, "y": 0},
-      "datasource": {"type": "postgres", "uid": "timescaledb"},
+      "gridPos": { "w": 6, "h": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
       "targets": [
         {
           "refId": "A",
@@ -28,9 +28,9 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 2},
-              {"color": "red", "value": 5}
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2 },
+              { "color": "red", "value": 5 }
             ]
           },
           "mappings": []
@@ -54,8 +54,8 @@
       "id": 2,
       "title": "Volumen de transacciones por minuto",
       "type": "timeseries",
-      "gridPos": {"w": 18, "h": 8, "x": 6, "y": 0},
-      "datasource": {"type": "postgres", "uid": "timescaledb"},
+      "gridPos": { "w": 18, "h": 8, "x": 6, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
       "targets": [
         {
           "refId": "A",
@@ -76,24 +76,22 @@
         },
         "overrides": [
           {
-            "matcher": {"id": "byName", "options": "Fraud"},
-            "properties": [
-              {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}
-            ]
+            "matcher": { "id": "byName", "options": "Fraud" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
           }
         ]
       },
       "options": {
-        "tooltip": {"mode": "multi", "sort": "none"},
-        "legend": {"displayMode": "list", "placement": "bottom", "calcs": []}
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] }
       }
     },
     {
       "id": 3,
       "title": "Alertas recientes",
       "type": "table",
-      "gridPos": {"w": 12, "h": 10, "x": 0, "y": 8},
-      "datasource": {"type": "postgres", "uid": "postgresql"},
+      "gridPos": { "w": 12, "h": 10, "x": 0, "y": 8 },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
@@ -110,7 +108,7 @@
         },
         "overrides": [
           {
-            "matcher": {"id": "byName", "options": "Severidad"},
+            "matcher": { "id": "byName", "options": "Severidad" },
             "properties": [
               {
                 "id": "custom.displayMode",
@@ -119,10 +117,10 @@
               {
                 "id": "mappings",
                 "value": [
-                  {"type": "value", "options": {"CRITICAL": {"color": "red", "index": 0}}},
-                  {"type": "value", "options": {"HIGH": {"color": "orange", "index": 1}}},
-                  {"type": "value", "options": {"WARNING": {"color": "yellow", "index": 2}}},
-                  {"type": "value", "options": {"INFO": {"color": "blue", "index": 3}}}
+                  { "type": "value", "options": { "CRITICAL": { "color": "red", "index": 0 } } },
+                  { "type": "value", "options": { "HIGH": { "color": "orange", "index": 1 } } },
+                  { "type": "value", "options": { "WARNING": { "color": "yellow", "index": 2 } } },
+                  { "type": "value", "options": { "INFO": { "color": "blue", "index": 3 } } }
                 ]
               }
             ]
@@ -131,16 +129,16 @@
       },
       "options": {
         "showHeader": true,
-        "sortBy": [{"displayName": "Timestamp", "desc": true}],
-        "footer": {"show": false, "reducer": ["sum"]}
+        "sortBy": [{ "displayName": "Timestamp", "desc": true }],
+        "footer": { "show": false, "reducer": ["sum"] }
       }
     },
     {
       "id": 4,
       "title": "Top 10 merchants con más fraude",
       "type": "table",
-      "gridPos": {"w": 12, "h": 10, "x": 12, "y": 8},
-      "datasource": {"type": "postgres", "uid": "timescaledb"},
+      "gridPos": { "w": 12, "h": 10, "x": 12, "y": 8 },
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
       "targets": [
         {
           "refId": "A",
@@ -157,9 +155,9 @@
         },
         "overrides": [
           {
-            "matcher": {"id": "byName", "options": "Tasa %"},
+            "matcher": { "id": "byName", "options": "Tasa %" },
             "properties": [
-              {"id": "unit", "value": "percent"},
+              { "id": "unit", "value": "percent" },
               {
                 "id": "custom.displayMode",
                 "value": "color-background"
@@ -169,9 +167,9 @@
                 "value": {
                   "mode": "absolute",
                   "steps": [
-                    {"color": "green", "value": null},
-                    {"color": "yellow", "value": 2},
-                    {"color": "red", "value": 5}
+                    { "color": "green", "value": null },
+                    { "color": "yellow", "value": 2 },
+                    { "color": "red", "value": 5 }
                   ]
                 }
               }
@@ -181,15 +179,15 @@
       },
       "options": {
         "showHeader": true,
-        "footer": {"show": false, "reducer": ["sum"]}
+        "footer": { "show": false, "reducer": ["sum"] }
       }
     },
     {
       "id": 5,
       "title": "Fraudes detectados (última hora)",
       "type": "stat",
-      "gridPos": {"w": 6, "h": 4, "x": 0, "y": 18},
-      "datasource": {"type": "postgres", "uid": "timescaledb"},
+      "gridPos": { "w": 6, "h": 4, "x": 0, "y": 18 },
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
       "targets": [
         {
           "refId": "A",
@@ -200,13 +198,13 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": {"mode": "thresholds"},
+          "color": { "mode": "thresholds" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 10},
-              {"color": "red", "value": 50}
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 50 }
             ]
           },
           "mappings": []
@@ -230,8 +228,8 @@
       "id": 6,
       "title": "Transacciones totales (última hora)",
       "type": "stat",
-      "gridPos": {"w": 6, "h": 4, "x": 6, "y": 18},
-      "datasource": {"type": "postgres", "uid": "timescaledb"},
+      "gridPos": { "w": 6, "h": 4, "x": 6, "y": 18 },
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
       "targets": [
         {
           "refId": "A",
@@ -242,7 +240,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": {"mode": "fixed", "fixedColor": "blue"},
+          "color": { "mode": "fixed", "fixedColor": "blue" },
           "mappings": []
         },
         "overrides": []

@@ -7,12 +7,12 @@ datasources:
     access: proxy
     url: timescaledb:5432
     user: ${GF_TIMESCALEDB_USER}
+    database: ${GF_TIMESCALEDB_DB}
     secureJsonData:
       password: ${GF_TIMESCALEDB_PASSWORD}
     jsonData:
-      database: ${GF_TIMESCALEDB_DB}
       sslmode: disable
-      postgresVersion: 1500
+      postgresVersion: 1600
       timescaledb: true
     editable: true
 
@@ -22,12 +22,12 @@ datasources:
     access: proxy
     url: postgresql:5432
     user: ${GF_POSTGRES_USER}
+    database: ${GF_POSTGRES_DB}
     secureJsonData:
       password: ${GF_POSTGRES_PASSWORD}
     jsonData:
-      database: ${GF_POSTGRES_DB}
       sslmode: disable
-      postgresVersion: 1500
+      postgresVersion: 1600
       timescaledb: false
     editable: true
 

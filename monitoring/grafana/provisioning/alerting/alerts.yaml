@@ -1,6 +1,7 @@
 apiVersion: 1
 
 groups:
+  # Trend-based alerts — evaluated every minute, grace periods apply
   - orgId: 1
     name: fraud-detection-alerts
     folder: Fraud Detection
@@ -15,7 +16,7 @@ groups:
           severity: critical
         annotations:
           summary: "Fraud rate exceeds 5% for 10 minutes"
-          description: "Current fraud rate: {{ $values.B.Value | printf \"%.2f\" }}%"
+          description: 'Current fraud rate: {{ $values.B.Value | printf "%.2f" }}%'
         data:
           - refId: A
             datasourceUid: timescaledb
@@ -63,7 +64,7 @@ groups:
           severity: warning
         annotations:
           summary: "Serving P99 latency exceeds 200ms"
-          description: "Current P99 latency: {{ $values.B.Value | printf \"%.0f\" }}ms"
+          description: 'Current P99 latency: {{ $values.B.Value | printf "%.0f" }}ms'
         data:
           - refId: A
             datasourceUid: prometheus
@@ -100,52 +101,12 @@ groups:
                     type: gt
                     params: [200]
 
-      - uid: alert-drift-detected
-        title: "Data Drift Detected"
-        condition: C
-        for: 0s
-        labels:
-          severity: critical
-        annotations:
-          summary: "Global drift score above threshold (0.30)"
-          description: "Drift score: {{ $values.B.Value | printf \"%.4f\" }}"
-        data:
-          - refId: A
-            datasourceUid: postgresql
-            relativeTimeRange:
-              from: 3600
-              to: 0
-            model:
-              rawSql: |
-                SELECT
-                  NOW() AS time,
-                  drift_score AS value
-                FROM drift_reports
-                ORDER BY report_date DESC
-                LIMIT 1
-              format: table
-          - refId: B
-            datasourceUid: "__expr__"
-            relativeTimeRange:
-              from: 0
-              to: 0
-            model:
-              type: reduce
-              expression: A
-              reducer: last
-              conditions: []
-          - refId: C
-            datasourceUid: "__expr__"
-            relativeTimeRange:
-              from: 0
-              to: 0
-            model:
-              type: threshold
-              expression: B
-              conditions:
-                - evaluator:
-                    type: gt
-                    params: [0.30]
+  # Immediate alerts — evaluated every 10s, no grace period
+  - orgId: 1
+    name: fraud-detection-realtime
+    folder: Fraud Detection
+    interval: 10s
+    rules:
 
       - uid: alert-fraud-spike
         title: "Fraud Spike — 5 min"
@@ -193,3 +154,99 @@ groups:
                 - evaluator:
                     type: gt
                     params: [5]
+
+      - uid: alert-drift-detected
+        title: "Data Drift Detected"
+        condition: C
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Global drift score above threshold (0.30)"
+          description: 'Drift score: {{ $values.B.Value | printf "%.4f" }}'
+        data:
+          - refId: A
+            datasourceUid: postgresql
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              rawSql: |
+                SELECT
+                  NOW() AS time,
+                  drift_score AS value
+                FROM drift_reports
+                WHERE report_date >= NOW() - INTERVAL '24 hours'
+                ORDER BY report_date DESC
+                LIMIT 1
+              format: table
+          - refId: B
+            datasourceUid: "__expr__"
+            relativeTimeRange:
+              from: 0
+              to: 0
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              conditions: []
+          - refId: C
+            datasourceUid: "__expr__"
+            relativeTimeRange:
+              from: 0
+              to: 0
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.30]
+
+      - uid: alert-drift-data-stale
+        title: "Drift Pipeline Stale"
+        condition: C
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "No drift report generated in the last 24 hours"
+          description: 'Hours since last drift report: {{ $values.B.Value | printf "%.1f" }}h'
+        data:
+          - refId: A
+            datasourceUid: postgresql
+            relativeTimeRange:
+              from: 86400
+              to: 0
+            model:
+              rawSql: |
+                SELECT
+                  NOW() AS time,
+                  COALESCE(
+                    EXTRACT(EPOCH FROM (NOW() - MAX(report_date))) / 3600,
+                    9999
+                  ) AS value
+                FROM drift_reports
+              format: table
+          - refId: B
+            datasourceUid: "__expr__"
+            relativeTimeRange:
+              from: 0
+              to: 0
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              conditions: []
+          - refId: C
+            datasourceUid: "__expr__"
+            relativeTimeRange:
+              from: 0
+              to: 0
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [24]
