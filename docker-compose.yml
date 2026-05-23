@@ -246,36 +246,6 @@ services:
     networks:
       - mlops-net
 
-  model:
-    build:
-      context: .
-      dockerfile: docker/model/Dockerfile
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-      postgresql:
-        condition: service_healthy
-      mlflow:
-        condition: service_healthy
-    environment:
-      TIMESCALE_HOST: timescaledb
-      TIMESCALE_PORT: "5432"
-      TIMESCALE_USER: ${TIMESCALE_USER}
-      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD}
-      TIMESCALE_DB: ${TIMESCALE_DB}
-      POSTGRES_HOST: postgresql
-      POSTGRES_PORT: "5432"
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
-      MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME}
-      MODEL_NAME: ${MODEL_NAME}
-    volumes:
-      - ./artifacts:/app/artifacts
-    networks:
-      - mlops-net
-
   serving:
     build:
       context: .
