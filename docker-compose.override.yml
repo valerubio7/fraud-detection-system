@@ -1,10 +1,4 @@
 services:
-  model:
-    volumes:
-      - ./model:/app/model
-      - ./offline_features:/app/offline_features
-      - ./artifacts:/app/artifacts
-
   serving:
     # Bind-mount API code so edits on host trigger reload without rebuilding the image.
     volumes:
@@ -47,8 +41,8 @@ services:
     # Sync DAGs from host so scheduler picks up changes without rebuilds.
     volumes:
       - ./mlops/airflow/dags:/opt/airflow/dags
-    # Lower memory ceiling for local machines.
-    mem_limit: 1g
+    # Training tasks require significant memory for XGBoost + Optuna.
+    mem_limit: 4g
     environment:
       # Verbose scheduler logs for task orchestration debugging.
       AIRFLOW__LOGGING__LOGGING_LEVEL: DEBUG
