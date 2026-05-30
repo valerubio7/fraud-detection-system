@@ -131,9 +131,11 @@ prompt_merchants() {
   fi
 }
 
+_RESTORE=false
+
 run_streaming() {
   local -a cmd=(
-    python streaming/producer/main.py
+    python -m streaming.producer.main
     --mode  "${MODE}"
     --tps   "${TPS}"
     --num-users     "${NUM_USERS}"
@@ -153,16 +155,16 @@ run_streaming() {
   show_config
   printf "  Running: %s\n\n" "${cmd[*]}"
 
-  local restore=false
+  _RESTORE=false
   if docker compose ps producer 2>/dev/null | grep -qE "running|Up"; then
     print_warning "Pausing default producer..."
     docker compose stop producer
-    restore=true
+    _RESTORE=true
   fi
 
   cleanup() {
     printf "\n"
-    if [[ "${restore}" == true ]]; then
+    if [[ "${_RESTORE}" == true ]]; then
       print_step "Restoring default producer..."
       docker compose start producer
     fi
