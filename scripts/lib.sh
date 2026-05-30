@@ -13,18 +13,10 @@ if [[ -t 1 && -n "${TERM:-}" && "${TERM:-}" != "dumb" ]]; then
     BLUE="$(tput setaf 4)"
     RESET="$(tput sgr0)"
   else
-    GREEN=""
-    RED=""
-    YELLOW=""
-    BLUE=""
-    RESET=""
+    GREEN="" RED="" YELLOW="" BLUE="" RESET=""
   fi
 else
-  GREEN=""
-  RED=""
-  YELLOW=""
-  BLUE=""
-  RESET=""
+  GREEN="" RED="" YELLOW="" BLUE="" RESET=""
 fi
 
 print_step() {
@@ -64,7 +56,6 @@ wait_for_service() {
       print_success "${service} está healthy"
       return 0
     fi
-
     sleep "${interval}"
     elapsed=$((elapsed + interval))
   done
@@ -90,8 +81,8 @@ check_mlflow() {
   curl -fsS http://localhost:5000/health >/dev/null 2>&1
 }
 
-check_fastapi() {
-  curl -s http://localhost:8000/health 2>/dev/null | grep -q '"status"'
+check_serving() {
+  curl -fsS http://localhost:8000/health >/dev/null 2>&1
 }
 
 check_airflow_webserver() {
@@ -116,32 +107,6 @@ check_kafka_ui() {
 
 check_prometheus() {
   curl -fsS http://localhost:9090/-/healthy >/dev/null 2>&1
-}
-
-ensure_airflow_admin_user() {
-  local output
-
-  if output="$({
-    docker compose exec -T airflow-webserver airflow users create \
-      --username "${AIRFLOW_ADMIN_USER}" \
-      --password "${AIRFLOW_ADMIN_PASSWORD}" \
-      --firstname Admin \
-      --lastname User \
-      --role Admin \
-      --email admin@fraudmlops.local
-  } 2>&1)"; then
-    print_success "Usuario admin de Airflow creado"
-    return 0
-  fi
-
-  if [[ "${output}" == *"already exist"* || "${output}" == *"already exists"* || "${output}" == *"already registered"* ]]; then
-    print_warning "Usuario ${AIRFLOW_ADMIN_USER} ya existe en Airflow, se omite creación"
-    return 0
-  fi
-
-  print_error "No se pudo crear el usuario admin de Airflow"
-  printf "%s\n" "${output}" >&2
-  return 1
 }
 
 create_kafka_topic() {
@@ -180,7 +145,7 @@ run_sql_migrations_if_exists() {
   shopt -u nullglob
 
   if (( ${#migration_files[@]} == 0 )); then
-    print_warning "${label}: no hay migraciones SQL en ${migrations_dir}, se omite"
+    print_warning "${label}: no hay archivos .sql en ${migrations_dir}, se omite"
     return 0
   fi
 

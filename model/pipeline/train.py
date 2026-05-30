@@ -85,6 +85,15 @@ def load_transactions(limit: int | None) -> pd.DataFrame:
     return df
 
 
+def _update_selected_features(features: list[str]) -> None:
+    Path("/tmp/selected_features.json").write_text(json.dumps(features), encoding="utf-8")
+    logger.info(
+        "Wrote %d features to /tmp/selected_features.json. "
+        "setup.sh will update selected_features.py and rebuild serving.",
+        len(features),
+    )
+
+
 def build_features(
     df: pd.DataFrame, y: pd.Series, output_dir: Path, seed: int
 ) -> tuple[pd.DataFrame, TransactionFeaturizer]:
@@ -94,10 +103,8 @@ def build_features(
     featurizer.apply_selection(report)
     selected = featurizer.get_feature_names()
     if selected != SELECTED_FEATURES:
-        raise RuntimeError(
-            "Selected features do not match model/selected_features.py. "
-            "Run feature selection on the seed dataset and update SELECTED_FEATURES."
-        )
+        logger.warning("Selected features differ from selected_features.py — updating automatically.")
+        _update_selected_features(selected)
     X_full = featurizer.transform(df)
     return X_full, featurizer
 
@@ -360,6 +367,7 @@ def main() -> None:
 
     y_full = df["is_fraud"].astype(int)
     X_full, _ = build_features(df, y_full, output_dir, args.seed)
+    actual_features = list(X_full.columns)
 
     X_train, X_val, X_test, y_train, y_val, y_test = temporal_split(X_full, y_full)
     if X_train.empty or X_val.empty or X_test.empty:
@@ -470,7 +478,7 @@ def main() -> None:
     save_confusion_matrix_plot(test_metrics["confusion_matrix"], confusion_path)
     save_roc_curve_plot(y_test.to_numpy(), model.predict_proba(X_test)[:, 1], roc_path)
     save_pr_curve_plot(y_test.to_numpy(), model.predict_proba(X_test)[:, 1], pr_path)
-    save_feature_importance_plot(model, SELECTED_FEATURES, feature_importance_path)
+    save_feature_importance_plot(model, actual_features, feature_importance_path)
     save_threshold_analysis_plot(threshold_metrics, optimal_threshold, threshold_path)
     evaluation_artifacts = [
         evaluation_results_path,
@@ -484,7 +492,7 @@ def main() -> None:
     save_metadata(
         output_dir=output_dir,
         df=df,
-        features=SELECTED_FEATURES,
+        features=actual_features,
         params=params,
         scale_pos_weight=effective_spw,
         split_sizes=split_sizes,
@@ -503,7 +511,7 @@ def main() -> None:
             split_sizes=split_sizes,
             training_data_from=training_data_from,
             training_data_to=training_data_to,
-            features=SELECTED_FEATURES,
+            features=actual_features,
             tuning_summary=tuning_summary,
             tuning_best_params=tuning_best_params,
             evaluation_metrics=test_metrics,

@@ -25,7 +25,6 @@ class TransactionRequest(BaseModel):
                     "seconds_since_last_tx": 1800.0,
                     "amount_ratio_vs_user_avg": 1.4,
                     "is_country_new": 0.0,
-                    "distinct_countries_seen": 2.0,
                     "is_merchant_new": 0.0,
                     "distinct_merchants_seen": 8.0,
                 },
@@ -45,10 +44,10 @@ class TransactionRequest(BaseModel):
     features: dict[str, float] = Field(
         description=(
             "Features pre-computed by the online feature engineering pipeline. "
-            "Must contain exactly 11 keys: "
+            "Must contain exactly 10 keys: "
             "`tx_count_1h`, `tx_count_24h`, `tx_count_7d`, "
             "`amount_sum_1h`, `amount_sum_24h`, `seconds_since_last_tx`, "
-            "`amount_ratio_vs_user_avg`, `is_country_new`, `distinct_countries_seen`, "
+            "`amount_ratio_vs_user_avg`, `is_country_new`, "
             "`is_merchant_new`, `distinct_merchants_seen`."
         )
     )

@@ -94,7 +94,6 @@ class ModelLoader:
                     window_features["seconds_since_last_tx"],
                     window_features["amount_ratio_vs_user_avg"],
                     window_features["is_country_new"],
-                    window_features["distinct_countries_seen"],
                     window_features["is_merchant_new"],
                     window_features["distinct_merchants_seen"],
                 ]
