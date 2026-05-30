@@ -41,12 +41,11 @@ class TestPrepareFeatures:
         "seconds_since_last_tx": 600.0,
         "amount_ratio_vs_user_avg": 1.5,
         "is_country_new": 0.0,
-        "distinct_countries_seen": 3,
         "is_merchant_new": 1.0,
         "distinct_merchants_seen": 7,
     }
 
-    def test_output_shape_is_1x17(self, loader_with_mock_encoder):
+    def test_output_shape_is_1x16(self, loader_with_mock_encoder):
         raw = {
             "amount": 150.0,
             "timestamp": datetime(2025, 1, 15, 14, 30, 0, tzinfo=UTC),
@@ -55,7 +54,7 @@ class TestPrepareFeatures:
             "device_type": "mobile",
         }
         result = loader_with_mock_encoder.prepare_features(raw, self.WINDOW_FEATURES)
-        assert result.shape == (1, 17)
+        assert result.shape == (1, 16)
 
     def test_log_amount_is_correct(self, loader_with_mock_encoder):
         raw = {

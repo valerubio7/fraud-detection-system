@@ -131,7 +131,7 @@ select = [
 # parameterized query via pd.read_sql(..., params=), not a real injection risk
 "model/pipeline/evaluate.py" = ["S608"]
 # git call with trusted static args
-"model/pipeline/train.py" = ["S607"]
+"model/pipeline/train.py" = ["S607", "S108"]
 
 [tool.ruff.format]
 quote-style = "double"
