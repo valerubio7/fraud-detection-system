@@ -263,7 +263,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  f.key AS \"Feature\",\n  ROUND((f.value->>'drift_score')::numeric, 4) AS \"Drift Score\"\nFROM drift_reports dr,\n  jsonb_each(dr.feature_drifts) AS f(key, value)\nWHERE dr.report_date = (SELECT MAX(report_date) FROM drift_reports)\nORDER BY \"Drift Score\" DESC"
+          "rawSql": "SELECT\n  f.key AS \"Feature\",\n  ROUND((f.value->>'drift_score')::numeric, 4) AS \"Drift Score\"\nFROM drift_reports dr,\n  jsonb_each(dr.feature_drifts->'data_drift') AS f(key, value)\nWHERE dr.report_date = (SELECT MAX(report_date) FROM drift_reports)\nORDER BY \"Drift Score\" DESC"
         }
       ],
       "fieldConfig": {

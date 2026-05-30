@@ -89,7 +89,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(http_requests_total{status_code=~\"5..\"}[5m]))\n/\nsum(rate(http_requests_total[5m]))",
+          "expr": "(sum(rate(http_requests_total{status=~\"5xx\"}[5m])) or vector(0))\n/\nsum(rate(http_requests_total[5m]))",
           "instant": true,
           "legendFormat": ""
         }
@@ -596,14 +596,14 @@
     },
     {
       "id": 17,
-      "title": "Kafka lag — transactions.predictions",
+      "title": "Kafka mensajes — transactions.predictions",
       "type": "stat",
       "gridPos": { "w": 8, "h": 4, "x": 8, "y": 29 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(kafka_consumergroup_lag{topic=\"transactions.predictions\"})",
+          "expr": "sum(kafka_topic_partition_current_offset{topic=\"transactions.predictions\"})",
           "instant": true,
           "legendFormat": ""
         }
@@ -611,13 +611,11 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": { "mode": "thresholds" },
+          "color": { "mode": "fixed", "fixedColor": "blue" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 100 },
-              { "color": "red", "value": 1000 }
+              { "color": "blue", "value": null }
             ]
           },
           "mappings": []
@@ -635,14 +633,14 @@
     },
     {
       "id": 18,
-      "title": "Kafka lag — transactions.fraud.alerts",
+      "title": "Kafka mensajes — transactions.fraud.alerts",
       "type": "stat",
       "gridPos": { "w": 8, "h": 4, "x": 16, "y": 29 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(kafka_consumergroup_lag{topic=\"transactions.fraud.alerts\"})",
+          "expr": "sum(kafka_topic_partition_current_offset{topic=\"transactions.fraud.alerts\"})",
           "instant": true,
           "legendFormat": ""
         }
@@ -650,13 +648,11 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": { "mode": "thresholds" },
+          "color": { "mode": "fixed", "fixedColor": "orange" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 100 },
-              { "color": "red", "value": 1000 }
+              { "color": "orange", "value": null }
             ]
           },
           "mappings": []
