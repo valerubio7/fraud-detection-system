@@ -98,25 +98,9 @@ cd fraud-detection-system
 cp .env.example .env
 ```
 
-Abrir `.env` y reemplazar todos los valores `CHANGE_ME_*` con contraseñas propias:
+El archivo ya tiene valores por defecto listos para desarrollo local. No es necesario modificar nada para levantar el stack.
 
-```env
-# Contraseñas a cambiar obligatoriamente:
-POSTGRES_PASSWORD=<elegir-password>
-TIMESCALE_PASSWORD=<elegir-password>
-AIRFLOW__CORE__FERNET_KEY=<clave-base64-de-32-bytes>
-AIRFLOW__WEBSERVER__SECRET_KEY=<clave-aleatoria>
-AIRFLOW_ADMIN_PASSWORD=<elegir-password>
-GF_SECURITY_ADMIN_PASSWORD=<elegir-password>
-```
-
-Para generar una Fernet key válida:
-
-```bash
-python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
-> Si `cryptography` no está instalado: `pip install cryptography`
+> Para un entorno que no sea de desarrollo, se recomienda reemplazar las contraseñas del `.env` antes de continuar.
 
 ---
 
