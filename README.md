@@ -1,175 +1,327 @@
-# Fraud Detection System — MLOps End-to-End
+# Sistema de Detección de Fraude en Tiempo Real
 
-Sistema de detección de fraude en tiempo real con plataforma MLOps completa: streaming con Kafka, feature engineering online, inferencia XGBoost < 100ms, reentrenamiento automático con Airflow, drift detection con Evidently AI, y observabilidad con Grafana + Prometheus.
+Sistema de detección de fraude bancario que procesa transacciones en tiempo real mediante un pipeline de streaming sobre Apache Kafka. Cada transacción pasa por una etapa de feature engineering que calcula ventanas deslizantes (1h, 24h, 7d) y perfiles históricos por usuario almacenados en Redis, para luego ser evaluada por un modelo XGBoost servido con FastAPI. Las predicciones y alertas se publican de vuelta a Kafka y se persisten en PostgreSQL.
 
-> Replica la arquitectura de sistemas como Mercado Pago o Visa: cada transacción se evalúa en menos de 100ms mientras el modelo se monitorea solo y se reentrena cuando empieza a degradarse.
+El sistema incluye un pipeline MLOps completo orquestado por Apache Airflow: reentrenamiento diario del modelo con datos de TimescaleDB, evaluación con quality gates (F1 ≥ 0.85, AUC-ROC ≥ 0.90), promoción automática al model registry de MLflow y detección de drift cada 6 horas con Evidently AI. Cuando el drift supera el umbral configurado, Airflow dispara automáticamente un nuevo ciclo de reentrenamiento sin intervención manual.
 
-## Arquitectura en una línea
+Todo el stack —19 servicios— corre sobre Docker Compose y se levanta con un único script que incluye seed de datos, entrenamiento inicial del modelo y verificación de salud de todos los servicios.
+
+---
+
+## Arquitectura
+
+### Pipeline en tiempo real
 
 ```
-Simulador → [Kafka: transactions.raw] → Feature Engineering → [Kafka: transactions.features]
-  → FastAPI / XGBoost → [Kafka: transactions.predictions] → Grafana Alertas
-                   ↓
-             TimescaleDB ← transacciones + features
-             PostgreSQL  ← predicciones + métricas + drift
-                   ↑
-         Airflow (reentrenamiento diario) + Evidently (drift cada 6h) + MLflow (registry)
+Simulador        Kafka               Feature              Kafka             Inference
+Producer    →  transactions.raw  →  Engineering      →  transactions   →  Consumer
+                                    Consumer             .features         │
+                                    │                                      │ POST /predict
+                                    ├─ Redis (estado ventanas)             │
+                                    └─ TimescaleDB (persistencia)          FastAPI + XGBoost
+                                                                           │
+                                                              transactions.predictions
+                                                              transactions.fraud.alerts
 ```
 
-→ Diagrama detallado: [docs/architecture.md](docs/architecture.md)
+### Pipeline MLOps (batch — orquestado por Airflow)
+
+```
+TimescaleDB ──► retrain_fraud_model (diario 2 AM) ──► MLflow Registry
+                                                            │
+                                               validate_and_promote_model
+                                                            │ (quality gates: F1 ≥ 0.85, AUC-ROC ≥ 0.90)
+                                                    PostgreSQL model_deployments
+                                                            │
+                                                     FastAPI carga modelo nuevo
+
+TimescaleDB ──► drift_detection_report (cada 6h) ──► Evidently AI
+                                                            │ (drift > 0.30)
+                                                     dispara reentrenamiento
+```
+
+### Monitoreo
+
+```
+FastAPI ──► Prometheus ──► Grafana ◄── TimescaleDB
+                                  ◄── PostgreSQL
+                    Alertas unificadas (Grafana Unified Alerting)
+```
+
+---
 
 ## Stack tecnológico
 
-| Capa | Tecnología | Rol |
-|---|---|---|
-| Streaming | Apache Kafka | Pipeline de transacciones en tiempo real |
-| Feature Engineering | Python (custom) | Ventanas deslizantes y features históricas online |
-| Modelo | XGBoost | Clasificador binario de fraude |
-| Serving | FastAPI + uvicorn | Inferencia con latencia P99 < 100ms |
-| ML Tracking | MLflow | Experimentos, versiones y model registry |
-| Orquestación | Apache Airflow | Reentrenamiento automático y validación |
-| Drift Detection | Evidently AI | Detección de data drift y model drift |
-| DB Series Temporales | TimescaleDB | Transacciones con hypertables y continuous aggregates |
-| DB Relacional | PostgreSQL | Predicciones, métricas, audit log, stored procedures |
-| Monitoreo | Grafana + Prometheus | 4 dashboards y 4 alertas en tiempo real |
-| Infra | Docker + Compose | Stack completo en un solo comando |
-| CI/CD | GitHub Actions | Lint, tests, build y security scan |
+| Tecnología | Versión | Rol |
+|-----------|---------|-----|
+| Python | 3.11+ | Lenguaje principal |
+| FastAPI + Uvicorn | 0.136 / 0.44 | API REST de inferencia |
+| XGBoost | 2.1.4 | Modelo de clasificación de fraude |
+| PostgreSQL | 16.2 | Metadata del sistema: despliegues, predicciones, alertas, drift |
+| TimescaleDB | 2.14.2-pg16 | Serie temporal de transacciones (hypertable) |
+| Redis | 7.2 | Caché de features en streaming y predicciones |
+| Apache Kafka | 7.6.0 (Confluent) | Bus de eventos entre productores y consumidores |
+| Apache Airflow | 2.11.0 | Orquestación de pipelines de reentrenamiento y drift |
+| MLflow | 2.17.2 | Tracking de experimentos y model registry |
+| Evidently AI | 0.4.36 | Detección de drift de datos y modelo |
+| Prometheus | 2.51.0 | Recolección de métricas |
+| Grafana | latest | Dashboards y alertas |
+| Docker + Compose v2 | — | Contenedorización de todos los servicios |
+| asyncpg / psycopg2 | 0.31 / 2.9 | Acceso directo a PostgreSQL sin ORM |
 
-## Quickstart
+---
 
-**Prerequisitos:** Docker Desktop (o Docker Engine + Compose v2) y `curl`.
+## Guía de instalación
+
+### Prerrequisitos
+
+- **Docker** (versión reciente con soporte Compose v2)
+- **Docker Compose v2** — se verifica con `docker compose version` (debe imprimir `v2.x.x` o superior)
+- **curl** y **Python 3** disponibles en el host (usados por el script de setup)
+- Al menos **8 GB de RAM** disponibles para el stack completo
+- Al menos **10 GB de espacio en disco** para imágenes y datos
+
+---
+
+### Paso 1 — Clonar el repositorio
 
 ```bash
-# 1. Clonar el repo
-git clone https://github.com/valerubio7/fraud-detection-system.git
+git clone <url-del-repositorio>
 cd fraud-detection-system
-
-# 2. Primer setup — crea .env, construye imágenes, levanta el stack completo
-./scripts/setup.sh
-# Si es la primera vez, el script crea .env desde .env.example y pide
-# que edites las credenciales. Luego volvé a correr el mismo comando.
-
-# 3. Verificar que todo está healthy
-./scripts/smoke_test.sh
-
-# 4. Iniciar el simulador de transacciones
-uv run python -m streaming.producer.main --mode live --tps 10 --fraud-rate 0.02
-
-# 5. Abrir los dashboards
-open http://localhost:3000   # Grafana (admin/admin por defecto)
 ```
+
+---
+
+### Paso 2 — Configurar las variables de entorno
+
+```bash
+cp .env.example .env
+```
+
+Abrir `.env` y reemplazar todos los valores `CHANGE_ME_*` con contraseñas propias:
+
+```env
+# Contraseñas a cambiar obligatoriamente:
+POSTGRES_PASSWORD=<elegir-password>
+TIMESCALE_PASSWORD=<elegir-password>
+AIRFLOW__CORE__FERNET_KEY=<clave-base64-de-32-bytes>
+AIRFLOW__WEBSERVER__SECRET_KEY=<clave-aleatoria>
+AIRFLOW_ADMIN_PASSWORD=<elegir-password>
+GF_SECURITY_ADMIN_PASSWORD=<elegir-password>
+```
+
+Para generar una Fernet key válida:
+
+```bash
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+> Si `cryptography` no está instalado: `pip install cryptography`
+
+---
+
+### Paso 3 — Ejecutar el script de setup
+
+```bash
+./scripts/setup.sh
+```
+
+El script es **idempotente** — se puede correr más de una vez sin duplicar datos ni reentrenar si el modelo ya existe. Ejecuta 6 etapas en secuencia:
+
+| Etapa | Descripción | Tiempo estimado |
+|-------|-------------|-----------------|
+| 1/6 | Verificación de prerrequisitos y variables de entorno | < 10 s |
+| 2/6 | Build de imágenes Docker locales | 5–15 min (primera vez) |
+| 3/6 | Arranque de infraestructura base e inicialización de MLflow | 1–2 min |
+| 4/6 | Inicialización de Airflow, topics Kafka y migraciones SQL | 2–3 min |
+| 5/6 | Seed de 100.000 transacciones, entrenamiento XGBoost y promoción del modelo | 5–10 min |
+| 6/6 | Verificación final de todos los servicios | < 1 min |
+
+**Tiempo total primera ejecución: ~5–20 minutos** (varía según la velocidad de la conexión y el hardware).
+
+Al finalizar, el script imprime las URLs de todos los servicios y el modelo en producción.
+
+---
+
+### Paso 4 — Verificar que todo está funcionando
+
+```bash
+# Estado de todos los contenedores
+docker compose ps
+```
+
+---
 
 ## Servicios disponibles
 
 | Servicio | URL | Descripción |
-|---|---|---|
-| **FastAPI** | http://localhost:8000/docs | API de inferencia (Swagger UI) |
-| **FastAPI ReDoc** | http://localhost:8000/redoc | Documentación alternativa |
-| **MLflow** | http://localhost:5000 | Experimentos y model registry |
-| **Airflow** | http://localhost:8081 | DAGs de reentrenamiento y drift |
-| **Grafana** | http://localhost:3000 | Dashboards de fraude y sistema |
-| **Prometheus** | http://localhost:9090 | Métricas de FastAPI |
-| **Kafka UI** | http://localhost:8080 | Topics y consumer groups |
-| **PostgreSQL** | localhost:5432 | Metadata del sistema |
-| **TimescaleDB** | localhost:5433 | Series temporales de transacciones |
+|---------|-----|-------------|
+| **API de inferencia** | http://localhost:8000 | Endpoint principal de predicción de fraude |
+| **Swagger UI** | http://localhost:8000/docs | Documentación interactiva de la API |
+| **MLflow** | http://localhost:5000 | Experimentos, métricas y model registry |
+| **Airflow** | http://localhost:8081 | DAGs de reentrenamiento y drift (usuario: `admin`) |
+| **Prometheus** | http://localhost:9090 | Métricas del sistema |
+| **Grafana** | http://localhost:3000 | Dashboards de monitoreo (usuario: `admin`) |
+| **Kafka UI** | http://localhost:8080 | Inspección de topics (solo en desarrollo) |
 
-## Flujo de datos detallado
+---
 
-### Pipeline en tiempo real (< 100ms por transacción)
+## Uso de la API
 
-1. **Producer** genera transacciones sintéticas (modos: `live`, `scenario`, `replay`) y publica en `transactions.raw`.
-2. **Features** (feature engineering online): consume `transactions.raw`, calcula features en ventanas deslizantes (1h/24h/7d) usando `SlidingWindowStore` y `HistoricalProfileStore`, publica en `transactions.features`, y escribe en TimescaleDB.
-3. **Inference**: consume `transactions.features`, llama a FastAPI `/predict`, publica el resultado en `transactions.predictions` y alertas en `transactions.fraud.alerts`.
-4. **FastAPI**: recibe `TransactionRequest`, aplica el feature pipeline, infiere con XGBoost, y guarda la predicción en PostgreSQL de forma asíncrona.
+### Predicción individual
 
-### Pipeline MLOps (batch / scheduled)
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "transaction_id": "550e8400-e29b-41d4-a716-446655440000",
+    "user_id": "user_AR_001",
+    "merchant_id": "merchant_supermaxi",
+    "merchant_category": "grocery",
+    "amount": 150.75,
+    "country": "AR",
+    "timestamp": "2025-01-15T14:30:00Z",
+    "device_type": "mobile",
+    "ip_hash": "a3f8b2c1d4e5",
+    "features": {
+      "tx_count_1h": 3.0,
+      "tx_count_24h": 10.0,
+      "tx_count_7d": 52.0,
+      "amount_sum_1h": 320.50,
+      "amount_sum_24h": 1080.00,
+      "seconds_since_last_tx": 1800.0,
+      "amount_ratio_vs_user_avg": 1.4,
+      "is_country_new": 0.0,
+      "is_merchant_new": 0.0,
+      "distinct_merchants_seen": 8.0
+    }
+  }'
+```
 
-| DAG | Schedule | Qué hace |
-|---|---|---|
-| `retrain_fraud_model` | Diario 2 AM | Extrae datos, entrena XGBoost, registra en MLflow |
-| `validate_and_promote_model` | Triggered | Quality gates → promote a Production o archive |
-| `drift_detection_report` | Cada 6h | Evidently AI → guarda en PostgreSQL → trigger si drift > 0.3 |
-| `data_quality_check` | Cada 1h | Verifica volumen del stream y distribución de amounts |
+> El campo `ip_hash` es obligatorio. Las `features` son pre-computadas por el pipeline de streaming; en un entorno con el stack corriendo, el `inference` consumer las envía automáticamente.
 
-### Quality gates del modelo
+Respuesta:
 
-| Métrica | Umbral mínimo |
-|---|---|
-| F1-score | >= 0.85 |
-| AUC-ROC | >= 0.90 |
-| Latencia P99 (batch 1000) | <= 50ms |
-| Mejora sobre champion | > 2% en F1 |
+```json
+{
+  "transaction_id": "550e8400-e29b-41d4-a716-446655440000",
+  "prediction_score": 0.476,
+  "prediction_label": false,
+  "model_version": "1",
+  "latency_ms": 12.49
+}
+```
 
-## Estructura del proyecto
+---
+
+## Streaming en tiempo real
+
+El script `./scripts/streaming.sh` controla el pipeline de eventos interactivamente:
+
+```bash
+./scripts/streaming.sh
+```
+
+---
+
+## Estructura del repositorio
 
 ```
 fraud-detection-system/
-├── streaming/
-│   ├── producer/          # Simulador de transacciones (Kafka producer)
-│   ├── features/          # Feature engineering online + writer TimescaleDB
-│   ├── inference/         # Consumer features → FastAPI → predictions
-│   └── schemas/           # Schemas Avro para los topics Kafka
-├── offline_features/      # Pipeline batch para entrenamiento (featurizer, encoders)
-├── model/
-│   ├── train.py           # Pipeline de entrenamiento XGBoost
-│   ├── evaluate.py        # Quality gates y métricas
-│   └── selected_features.py # Lista canónica de 16 features
-├── serving/
-│   └── app/               # FastAPI: routes, schemas, services, model_loader
-├── mlops/
-│   ├── airflow/dags/      # 4 DAGs de Airflow
-│   └── evidently/         # Drift detection: data_drift, model_drift, drift_policy
 ├── database/
-│   ├── timescaledb/       # Migraciones + seeds + hypertable schema
-│   └── postgresql/        # Migraciones + stored procedures + triggers
-├── monitoring/
-│   ├── grafana/           # 4 dashboards JSON + provisioning YAML
-│   └── prometheus/        # prometheus.yml
-├── docker/                # Dockerfiles por servicio
-├── scripts/
-│   ├── setup.sh           # Setup inicial (dev local, con build)
-│   ├── deploy.sh          # Bootstrap desde imágenes pre-construidas
-│   ├── smoke_test.sh      # Verificación post-deploy
-│   └── lib.sh             # Funciones compartidas entre scripts
-├── tests/
-│   ├── unit/              # Tests unitarios (pytest, sin servicios externos)
-│   ├── integration/       # Tests de integración (testcontainers)
-│   └── load/              # Benchmarks Locust y TimescaleDB
+│   ├── postgresql/
+│   │   ├── migrations/          # Esquema: model_deployments, predictions_history, drift_reports, alert_log
+│   │   ├── stored_procedures/   # activate_model_version (con FOR UPDATE), check_fraud_rate
+│   │   └── triggers/            # alert_on_high_fraud_rate (AFTER INSERT)
+│   └── timescaledb/
+│       ├── migrations/          # Hypertable transactions, vistas materializadas continuas, compresión
+│       └── seeds/               # Generador de 100.000 transacciones sintéticas
+├── docker/                      # Dockerfiles por servicio
 ├── docs/
-│   ├── architecture.md    # Diagrama y decisiones de diseño
-│   ├── glossary.md        # Glosario técnico del proyecto
-│   ├── implementation-story.md # Historia de implementación fase a fase
-│   └── runbooks/          # Procedimientos operativos
-└── .github/workflows/     # CI/CD: lint, tests, build, security scan
+│   └── architecture.md          # Diagramas Mermaid de la arquitectura
+├── mlops/
+│   ├── airflow/dags/            # retrain, validate_and_promote, drift_detection, data_quality
+│   ├── evidently/               # Lógica de detección de drift de datos y modelo
+│   └── mlflow/                  # Inicialización del experimento y registry
+├── model/
+│   └── pipeline/                # train.py, evaluate.py, promote.py
+├── monitoring/
+│   ├── grafana/                 # Dashboards: system_health, drift_monitor
+│   └── prometheus/              # prometheus.yml con scrape configs
+├── offline_features/            # Feature engineering offline: encoders, featurizer, selección
+├── scripts/
+│   ├── setup.sh                 # Setup completo del entorno (idempotente, 6 etapas)
+│   ├── deploy.sh                # Despliegue con imágenes pre-built del registry
+│   └── streaming.sh             # Control interactivo del pipeline de streaming
+├── serving/
+│   └── app/                     # FastAPI: rutas /predict, /predict/batch, /health
+├── streaming/
+│   ├── producer/                # Simulador de transacciones → Kafka
+│   ├── features/                # Consumer: computa features → TimescaleDB + Redis
+│   └── inference/               # Consumer: llama a la API → publica predicciones y alertas
+├── tests/
+│   ├── unit/                    # Tests unitarios sin dependencias externas
+│   ├── integration/             # Tests con contenedores reales (testcontainers)
+│   └── load/                    # Benchmarks de throughput (Locust, TimescaleDB)
+├── .env.example                 # Plantilla de variables de entorno
+├── docker-compose.yml           # Definición completa del stack
+└── pyproject.toml               # Dependencias y configuración de herramientas
 ```
 
-## Desarrollo local
+---
+
+## Comandos útiles
 
 ```bash
-# Instalar dependencias de desarrollo
-uv sync --group serving --group consumer --group model --group testing
+# Ver logs de un servicio en tiempo real
+docker compose logs -f serving
+docker compose logs -f airflow-scheduler
 
-# Activar hooks de pre-commit (ruff + check-yaml + detect-private-key)
-uv run pre-commit install
+# Detener el stack (preserva datos en volúmenes)
+docker compose down
 
-# Correr tests unitarios
-uv run pytest tests/unit/ -v
+# Detener el stack y eliminar todos los datos
+docker compose down -v
 
-# Correr linter
-uvx ruff check .
-uvx ruff format --check .
+# Conectarse a PostgreSQL
+docker compose exec postgresql psql -U fraud_metadata_user -d fraud_metadata
+
+# Conectarse a TimescaleDB
+docker compose exec timescaledb psql -U fraud_timeseries_user -d fraud_transactions_timeseries
+
+# Ver el modelo activo en producción
+docker compose exec postgresql psql -U fraud_metadata_user -d fraud_metadata \
+  -c "SELECT id, model_name, version, f1_score, created_at FROM model_deployments WHERE is_active;"
 ```
 
-Ver [CONTRIBUTING.md](CONTRIBUTING.md) para convenciones de código y proceso de PR.
+---
 
-## Documentación
+## Documentación por módulo
 
-- [Arquitectura detallada](docs/architecture.md) — diagrama Mermaid, decisiones de diseño, alternativas consideradas
-- [Glosario técnico](docs/glossary.md) — definiciones de todos los conceptos del sistema
-- [Historia de implementación](docs/implementation-story.md) — decisiones técnicas fase a fase
-- [Runbooks](docs/runbooks/) — procedimientos operativos (restart, promote model, kafka lag, backup)
-- [API Reference](http://localhost:8000/redoc) — documentación OpenAPI (requiere stack corriendo)
+| Módulo | README | Descripción |
+|--------|--------|-------------|
+| `database/` | [database/README.md](database/README.md) | Esquemas, migraciones, funciones, triggers e índices de PostgreSQL y TimescaleDB |
+| `streaming/` | [streaming/README.md](streaming/README.md) | Producer de transacciones, feature engineering consumer e inference consumer sobre Kafka |
+| `serving/` | [serving/README.md](serving/README.md) | API FastAPI: endpoints `/predict`, `/predict/batch` y `/health`, caché Redis, persistencia async |
+| `model/` | [model/README.md](model/README.md) | Pipeline de entrenamiento, evaluación con quality gates y promoción del modelo a MLflow |
+| `offline_features/` | [offline_features/README.md](offline_features/README.md) | Feature engineering offline: encoders, selección de features y estrategias de imbalance |
+| `mlops/` | [mlops/README.md](mlops/README.md) | DAGs de Airflow, detección de drift con Evidently AI e inicialización de MLflow |
+| `tests/` | [tests/README.md](tests/README.md) | Tests unitarios, de integración con contenedores reales y benchmarks de carga |
 
-## Licencia
+---
 
-MIT
+## Contexto académico
+
+**Materia:** Bases de Datos Avanzada
+**Trabajo:** Trabajo Final Grupal
+
+El proyecto implementa **6 de los 7 temas** requeridos por la cátedra:
+
+| # | Tema | Implementación | Justificación |
+|---|------|---------------|---------------|
+| 1 | **Índices** | 12 índices custom en PostgreSQL y TimescaleDB: compuestos (`user_id, timestamp`), parciales (`WHERE is_active IS TRUE`, `WHERE acknowledged_at IS NULL`, `WHERE is_fraud IS TRUE`) | Las consultas críticas filtran por estado activo del modelo y ventanas temporales recientes. Los índices parciales reducen el tamaño del índice y aceleran los filtros más frecuentes evitando full scans sobre tablas grandes. |
+| 2 | **Particionado** | TimescaleDB hypertable sobre `transactions` con chunks diarios (`INTERVAL '1 day'`), política de compresión automática a los 7 días y retención de 2 años | Las transacciones crecen ilimitadamente en el tiempo. El particionado temporal permite que las queries sobre ventanas recientes toquen solo los chunks relevantes; la compresión reduce el almacenamiento de datos históricos hasta un 90%. |
+| 3 | **Transacciones** | Stored procedure `activate_model_version` con `SELECT ... FOR UPDATE` (locking pesimista) + trigger `check_fraud_rate` que corre dentro de una transacción AFTER INSERT | La activación de un nuevo modelo debe ser atómica: no puede quedar un instante sin modelo activo ni dos activos a la vez. El `FOR UPDATE` previene race conditions ante activaciones concurrentes. |
+| 4 | **Seguridad** | Todas las credenciales se gestionan exclusivamente con variables de entorno (`.env`); la API valida todos los inputs con Pydantic antes de procesarlos; las queries usan parámetros en lugar de concatenación de strings | Nunca se hardcodean passwords en el código ni en las imágenes Docker. Los schemas Pydantic rechazan inputs malformados en la capa HTTP antes de que lleguen a la base de datos. |
+| 5 | **Sin ORM** | Acceso directo a PostgreSQL y TimescaleDB con `asyncpg` (async) y `psycopg2` en toda la capa de datos de la aplicación | El modelo de datos es simple y estable; un ORM agregaría overhead sin beneficio. `asyncpg` permite queries concurrentes sin bloquear el event loop de FastAPI, crítico para la latencia de inferencia. |
+| 6 | **NoSQL** | Redis como store de estado para las features en streaming (ventanas deslizantes de 1h/24h/7d y perfiles históricos por usuario) y como caché de predicciones por `transaction_id` | Redis permite leer y actualizar el estado de un usuario en < 1ms desde múltiples workers del consumidor de Kafka, lo que sería imposible consultando PostgreSQL por cada evento. Se combina con las bases relacionales: Redis para estado efímero caliente, PostgreSQL/TimescaleDB para datos persistentes. |
