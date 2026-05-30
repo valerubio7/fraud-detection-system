@@ -57,7 +57,7 @@ def evaluate_drift_action(data_drift_result: dict, model_drift_result: dict) -> 
         message = f"Drift within acceptable bounds: global score={drift_score:.3f}"
 
     alert_triggered = severity != "INFO"
-    trigger_retraining = severity in ("HIGH", "CRITICAL")
+    trigger_retraining = severity != "INFO"
     remediation_action = "triggered_retraining_dag" if trigger_retraining else None
 
     return DriftAction(

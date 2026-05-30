@@ -3,7 +3,7 @@
   "title": "Fraud Detection — Alertas en vivo",
   "tags": ["fraud", "realtime"],
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": { "from": "now-1h", "to": "now" },
   "panels": [
@@ -12,12 +12,12 @@
       "title": "Tasa de fraude actual",
       "type": "gauge",
       "gridPos": { "w": 6, "h": 8, "x": 0, "y": 0 },
-      "datasource": { "type": "postgres", "uid": "timescaledb" },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT fraud_rate * 100 AS \"Fraud Rate %\"\nFROM fraud_volume_hourly\nWHERE bucket_hour >= NOW() - INTERVAL '1 hour'\nORDER BY bucket_hour DESC\nLIMIT 1"
+          "rawSql": "SELECT\n  (COUNT(*) FILTER (WHERE prediction_label IS TRUE))::float / NULLIF(COUNT(*), 0) * 100 AS \"Fraud Rate %\"\nFROM predictions_history\nWHERE \"timestamp\" >= NOW() - INTERVAL '1 hour'"
         }
       ],
       "fieldConfig": {
@@ -55,12 +55,12 @@
       "title": "Volumen de transacciones por minuto",
       "type": "timeseries",
       "gridPos": { "w": 18, "h": 8, "x": 6, "y": 0 },
-      "datasource": { "type": "postgres", "uid": "timescaledb" },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT\n  time_bucket('1 minute', \"timestamp\") AS time,\n  COUNT(*) AS \"Total\",\n  COUNT(*) FILTER (WHERE is_fraud IS TRUE) AS \"Fraud\"\nFROM transactions\nWHERE $__timeFilter(\"timestamp\")\nGROUP BY 1\nORDER BY 1"
+          "rawSql": "SELECT\n  to_timestamp(floor(extract(epoch FROM \"timestamp\") / 60) * 60) AS time,\n  COUNT(*) AS \"Total\",\n  COUNT(*) FILTER (WHERE prediction_label IS TRUE) AS \"Fraud\"\nFROM predictions_history\nWHERE $__timeFilter(\"timestamp\")\nGROUP BY 1\nORDER BY 1"
         }
       ],
       "fieldConfig": {
@@ -187,12 +187,12 @@
       "title": "Fraudes detectados (última hora)",
       "type": "stat",
       "gridPos": { "w": 6, "h": 4, "x": 0, "y": 18 },
-      "datasource": { "type": "postgres", "uid": "timescaledb" },
+      "datasource": { "type": "postgres", "uid": "postgresql" },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT SUM(total_fraud_transactions) AS \"Fraudes\"\nFROM fraud_volume_hourly\nWHERE bucket_hour >= NOW() - INTERVAL '1 hour'"
+          "rawSql": "SELECT COUNT(*) AS \"Fraudes\"\nFROM predictions_history\nWHERE prediction_label IS TRUE\n  AND \"timestamp\" >= NOW() - INTERVAL '1 hour'"
         }
       ],
       "fieldConfig": {
