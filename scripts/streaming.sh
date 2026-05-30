@@ -162,8 +162,14 @@ run_streaming() {
     _RESTORE=true
   fi
 
+  local container_id
+  container_id=$(docker compose run -d producer "${cmd[@]}")
+
   cleanup() {
     printf "\n"
+    print_step "Stopping custom producer..."
+    docker stop "${container_id}" 2>/dev/null || true
+    docker rm   "${container_id}" 2>/dev/null || true
     if [[ "${_RESTORE}" == true ]]; then
       print_step "Restoring default producer..."
       docker compose start producer
@@ -171,8 +177,10 @@ run_streaming() {
   }
   trap cleanup EXIT INT TERM
 
-  print_step "Streaming — press Ctrl+C to stop"
-  docker compose run --rm producer "${cmd[@]}"
+  print_step "Custom producer started (id: ${container_id:0:12}) — press Enter to stop"
+  read -r _ignored || true
+  cleanup
+  trap - EXIT INT TERM
 }
 
 # ── main ──────────────────────────────────────────────────────────────────────
